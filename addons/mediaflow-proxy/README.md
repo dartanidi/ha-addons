@@ -33,6 +33,7 @@ This add-on packages [MediaFlow Proxy](https://github.com/mhdzumair/mediaflow-pr
 
 ### Required
 - `api_password`: Password to protect the API
+- Default port: **8888** (can be freely changed in the add-on configuration)
 
 ### Optional
 - `log_level`: Logging level (default: info)
@@ -40,7 +41,6 @@ This add-on packages [MediaFlow Proxy](https://github.com/mhdzumair/mediaflow-pr
 - `disable_home_page`: Disable home page UI
 - `proxy_url`: HTTP proxy URL for routing traffic
 - `enable_hls_prebuffer`: Enable HLS pre-buffering
-- Default port: **8888** (can be freely changed in the add-on configuration)
 - And many more options...
 
 See the [Configuration](DOCS.md) tab for all available options.
