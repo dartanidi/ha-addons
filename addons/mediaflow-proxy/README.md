@@ -23,7 +23,7 @@ This add-on packages [MediaFlow Proxy](https://github.com/mhdzumair/mediaflow-pr
 
 1. Add this repository to your Home Assistant add-ons:
    ```
-   https://github.com/YOUR_USERNAME/homeassistant-addons
+   https://github.com/dartanidi/ha-addons
    ```
 2. Install the "MediaFlow Proxy" add-on
 3. Configure the add-on (at minimum set an `api_password`)
