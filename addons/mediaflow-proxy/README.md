@@ -43,7 +43,7 @@ This add-on packages [MediaFlow Proxy](https://github.com/mhdzumair/mediaflow-pr
 - `enable_hls_prebuffer`: Enable HLS pre-buffering
 - And many more options...
 
-See the [Configuration](DOCS.md) tab for all available options.
+See the [Configuration](https://github.com/mhdzumair/mediaflow-proxy) options in the original repository.
 
 ## Usage
 
