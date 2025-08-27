@@ -2,10 +2,12 @@
 
 set -e
 
+bashio::log.info "Starting StreamViX Home Assistant Add-on..."
+
 # Get configuration options
-MFP_URL=$(bashio::config 'MFP_URL')
-MFP_PSW=$(bashio::config 'MFP_PSW')
-TMDB_API_KEY=$(bashio::config 'TMDB_API_KEY')
+MFP_URL=$(bashio::config 'MFP_URL // empty')
+MFP_PSW=$(bashio::config 'MFP_PSW // empty')
+TMDB_API_KEY=$(bashio::config 'TMDB_API_KEY // empty')
 ANIMEUNITY_ENABLED=$(bashio::config 'ANIMEUNITY_ENABLED')
 ANIMESATURN_ENABLED=$(bashio::config 'ANIMESATURN_ENABLED')
 ENABLE_MPD_STREAMS=$(bashio::config 'ENABLE_MPD_STREAMS')
@@ -15,8 +17,6 @@ DYNAMIC_EXTRACTOR_CONC=$(bashio::config 'DYNAMIC_EXTRACTOR_CONC')
 DYNAMIC_PURGE_HOUR=$(bashio::config 'DYNAMIC_PURGE_HOUR')
 DYNAMIC_DISABLE_RUNTIME_FILTER=$(bashio::config 'DYNAMIC_DISABLE_RUNTIME_FILTER')
 DYNAMIC_KEEP_YESTERDAY=$(bashio::config 'DYNAMIC_KEEP_YESTERDAY')
-
-bashio::log.info "Starting StreamViX..."
 
 # Set environment variables
 export PORT=7860
@@ -93,5 +93,3 @@ cd /app
 # Start the application
 bashio::log.info "StreamViX is starting on port 7860..."
 bashio::log.info "Access the web interface at: http://homeassistant.local:7860"
-
-exec pnpm start
