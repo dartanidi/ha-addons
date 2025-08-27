@@ -8,8 +8,6 @@
 
 _A Stremio addon that extracts streaming sources from various Italian sites_
 
-![StreamViX Logo](https://private-user-images.githubusercontent.com/217308952/478689159-11ef8b0e-6d55-44a4-9ccc-ae7031e99f34.png)
-
 ## About
 
 StreamViX is a Stremio addon that provides access to Italian streaming content from various sources including VixSrc, AnimeUnity, AnimeSaturn, and live TV channels. This Home Assistant add-on allows you to run StreamViX directly on your Home Assistant instance.
