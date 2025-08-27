@@ -44,4 +44,16 @@ schema:
   DYNAMIC_PURGE_HOUR: int(0,23)
   DYNAMIC_DISABLE_RUNTIME_FILTER: bool
   DYNAMIC_KEEP_YESTERDAY: bool
+# Build from source instead of using pre-built image
+# image: "ghcr.io/yourusername/ha-streamvix/{arch}"
+  TMDB_API_KEY: str?
+  ANIMEUNITY_ENABLED: bool
+  ANIMESATURN_ENABLED: bool
+  ENABLE_MPD_STREAMS: bool
+  ENABLE_LIVE_TV: bool
+  FAST_DYNAMIC: bool
+  DYNAMIC_EXTRACTOR_CONC: int(1,50)
+  DYNAMIC_PURGE_HOUR: int(0,23)
+  DYNAMIC_DISABLE_RUNTIME_FILTER: bool
+  DYNAMIC_KEEP_YESTERDAY: bool
 image: "ghcr.io/yourusername/ha-streamvix/{arch}"
