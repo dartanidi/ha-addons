@@ -1,19 +1,21 @@
 name: StreamViX
 version: "1.4.1"
 slug: streamvix
-description: A Stremio addon that extracts streaming sources from various Italian sites
+description: >-
+  A Stremio addon that extracts streaming sources from various Italian sites
+  including VixSrc, AnimeUnity, AnimeSaturn, and live TV channels.
 url: https://github.com/qwertyuiop8899/StreamViX
 arch:
   - aarch64
   - amd64
-  - armhf
   - armv7
-  - i386
 startup: application
 boot: auto
 init: false
 hassio_api: true
 hassio_role: default
+host_network: false
+stage: stable
 map:
   - config:rw
 ports:
@@ -22,28 +24,30 @@ ports_description:
   7860/tcp: StreamViX Web Interface
 webui: "http://[HOST]:[PORT:7860]"
 options:
-  MFP_URL: ""
-  MFP_PSW: ""
-  TMDB_API_KEY: ""
-  ANIMEUNITY_ENABLED: false
-  ANIMESATURN_ENABLED: true
-  ENABLE_MPD_STREAMS: false
-  ENABLE_LIVE_TV: true
-  FAST_DYNAMIC: false
-  DYNAMIC_EXTRACTOR_CONC: 10
-  DYNAMIC_PURGE_HOUR: 8
-  DYNAMIC_DISABLE_RUNTIME_FILTER: true
-  DYNAMIC_KEEP_YESTERDAY: false
+  mfp_url: ""
+  mfp_password: ""
+  tmdb_api_key: ""
+  animeunity_enabled: false
+  animesaturn_enabled: true
+  enable_mpd_streams: false
+  enable_live_tv: true
+  fast_dynamic: false
+  dynamic_extractor_conc: 10
+  dynamic_purge_hour: 8
+  dynamic_disable_runtime_filter: true
+  dynamic_keep_yesterday: false
+  log_level: info
 schema:
-  MFP_URL: str?
-  MFP_PSW: password?
-  TMDB_API_KEY: str?
-  ANIMEUNITY_ENABLED: bool
-  ANIMESATURN_ENABLED: bool
-  ENABLE_MPD_STREAMS: bool
-  ENABLE_LIVE_TV: bool
-  FAST_DYNAMIC: bool
-  DYNAMIC_EXTRACTOR_CONC: int(1,50)
-  DYNAMIC_PURGE_HOUR: int(0,23)
-  DYNAMIC_DISABLE_RUNTIME_FILTER: bool
-  DYNAMIC_KEEP_YESTERDAY: bool
+  mfp_url: url?
+  mfp_password: password?
+  tmdb_api_key: str?
+  animeunity_enabled: bool
+  animesaturn_enabled: bool
+  enable_mpd_streams: bool
+  enable_live_tv: bool
+  fast_dynamic: bool
+  dynamic_extractor_conc: int(1,50)
+  dynamic_purge_hour: int(0,23)
+  dynamic_disable_runtime_filter: bool
+  dynamic_keep_yesterday: bool
+  log_level: list(trace|debug|info|notice|warning|error|fatal)?
