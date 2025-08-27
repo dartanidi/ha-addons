@@ -4,9 +4,11 @@ FROM $BUILD_FROM
 # Set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Install Node.js, npm, and pnpm
+# Install required packages for Home Assistant add-ons and Node.js
 RUN \
     apk add --no-cache \
+        bashio \
+        curl \
         nodejs \
         npm \
         git \
@@ -15,22 +17,27 @@ RUN \
         py3-requests \
         py3-schedule \
         tzdata \
-    && npm install -g pnpm
+        ca-certificates
 
-# Set timezone
+# Install pnpm globally
+RUN npm install -g pnpm
+
+# Set timezone to match StreamViX requirements
 ENV TZ=Europe/Rome
 
 # Set work directory
 WORKDIR /app
 
 # Clone StreamViX repository
-RUN git clone https://github.com/qwertyuiop8899/StreamViX.git /app
+RUN git clone --depth 1 https://github.com/qwertyuiop8899/StreamViX.git /tmp/streamvix && \
+    cp -r /tmp/streamvix/* /app/ && \
+    rm -rf /tmp/streamvix
 
 # Install dependencies
-RUN pnpm install
+RUN pnpm install --prod
 
-# Build the application
-RUN pnpm run build
+# Build the application if build script exists
+RUN if [ -f package.json ] && grep -q "build" package.json; then pnpm run build; fi
 
 # Create config directory
 RUN mkdir -p /app/config
@@ -39,11 +46,14 @@ RUN mkdir -p /app/config
 COPY run.sh /
 RUN chmod a+x /run.sh
 
+# Set proper permissions
+RUN chown -R root:root /app
+
 # Expose port
 EXPOSE 7860
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:7860/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:7860 || exit 1
 
 CMD ["/run.sh"]
