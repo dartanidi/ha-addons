@@ -1,0 +1,124 @@
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# Home Assistant Add-on: StreamViX
+# Runs StreamViX
+# ==============================================================================
+
+bashio::log.info "Starting StreamViX..."
+
+# Wait for other services
+bashio::net.wait_for 80 localhost 900
+
+# Get configuration values
+declare mfp_url
+declare mfp_password  
+declare tmdb_api_key
+declare animeunity_enabled
+declare animesaturn_enabled
+declare enable_mpd_streams
+declare enable_live_tv
+declare fast_dynamic
+declare dynamic_extractor_conc
+declare dynamic_purge_hour
+declare dynamic_disable_runtime_filter
+declare dynamic_keep_yesterday
+declare log_level
+
+mfp_url=$(bashio::config 'mfp_url // empty')
+mfp_password=$(bashio::config 'mfp_password // empty')
+tmdb_api_key=$(bashio::config 'tmdb_api_key // empty')
+animeunity_enabled=$(bashio::config 'animeunity_enabled')
+animesaturn_enabled=$(bashio::config 'animesaturn_enabled')
+enable_mpd_streams=$(bashio::config 'enable_mpd_streams')
+enable_live_tv=$(bashio::config 'enable_live_tv')
+fast_dynamic=$(bashio::config 'fast_dynamic')
+dynamic_extractor_conc=$(bashio::config 'dynamic_extractor_conc')
+dynamic_purge_hour=$(bashio::config 'dynamic_purge_hour')
+dynamic_disable_runtime_filter=$(bashio::config 'dynamic_disable_runtime_filter')
+dynamic_keep_yesterday=$(bashio::config 'dynamic_keep_yesterday')
+log_level=$(bashio::config 'log_level')
+
+# Export environment variables
+export NODE_ENV=production
+export PORT=7860
+
+# MediaFlow Proxy configuration
+if bashio::config.has_value 'mfp_url'; then
+    export MFP_URL="${mfp_url}"
+    bashio::log.info "MediaFlow Proxy URL configured"
+fi
+
+if bashio::config.has_value 'mfp_password'; then
+    export MFP_PSW="${mfp_password}"
+    bashio::log.info "MediaFlow Proxy password configured"
+fi
+
+# TMDB API key
+if bashio::config.has_value 'tmdb_api_key'; then
+    export TMDB_API_KEY="${tmdb_api_key}"
+    bashio::log.info "TMDB API key configured"
+fi
+
+# Content source configuration
+export ANIMEUNITY_ENABLED="${animeunity_enabled}"
+export ANIMESATURN_ENABLED="${animesaturn_enabled}"
+export ENABLE_MPD_STREAMS="${enable_mpd_streams}"
+export ENABLE_LIVE_TV="${enable_live_tv}"
+
+# Dynamic content configuration
+if bashio::var.true "${fast_dynamic}"; then
+    export FAST_DYNAMIC=1
+    bashio::log.info "FAST Dynamic mode enabled"
+else
+    export FAST_DYNAMIC=0
+    bashio::log.info "Extractor mode enabled"
+fi
+
+export DYNAMIC_EXTRACTOR_CONC="${dynamic_extractor_conc}"
+export DYNAMIC_PURGE_HOUR="${dynamic_purge_hour}"
+
+if bashio::var.true "${dynamic_disable_runtime_filter}"; then
+    export DYNAMIC_DISABLE_RUNTIME_FILTER=1
+    bashio::log.info "Runtime filter disabled - using JSON as-is"
+else
+    export DYNAMIC_DISABLE_RUNTIME_FILTER=0
+    bashio::log.info "Runtime filter enabled"
+fi
+
+if bashio::var.true "${dynamic_keep_yesterday}"; then
+    export DYNAMIC_KEEP_YESTERDAY=1
+else
+    export DYNAMIC_KEEP_YESTERDAY=0
+fi
+
+# Set up persistent storage
+if ! bashio::fs.directory_exists '/config/streamvix'; then
+    bashio::log.info "Creating StreamViX configuration directory"
+    mkdir -p /config/streamvix
+fi
+
+# Link config directory
+if [[ ! -L /app/config ]]; then
+    rm -rf /app/config
+    ln -s /config/streamvix /app/config
+fi
+
+# Log configuration
+bashio::log.info "Configuration loaded:"
+bashio::log.info "- AnimeUnity: ${animeunity_enabled}"
+bashio::log.info "- AnimeSaturn: ${animesaturn_enabled}"  
+bashio::log.info "- Live TV: ${enable_live_tv}"
+bashio::log.info "- MPD Streams: ${enable_mpd_streams}"
+bashio::log.info "- Fast Dynamic: ${fast_dynamic}"
+bashio::log.info "- Extractor Concurrency: ${dynamic_extractor_conc}"
+bashio::log.info "- Purge Hour: ${dynamic_purge_hour}"
+
+# Change to app directory
+cd /app || bashio::exit.nok "Cannot change to app directory"
+
+# Start StreamViX
+bashio::log.info "Starting StreamViX on port 7860..."
+bashio::log.info "Web interface will be available at: http://homeassistant.local:7860"
+
+exec pnpm start
