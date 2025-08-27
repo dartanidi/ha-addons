@@ -3,7 +3,7 @@
   "version": "2.2.0",
   "slug": "mediaflow-proxy",
   "description": "High-performance proxy server for streaming media with DRM decryption",
-  "url": "https://github.com/mhdzumair/mediaflow-proxy",
+  "url": "https://github.com/nzo66/mediaflow-proxy",
   "arch": ["armhf", "armv7", "aarch64", "amd64", "i386"],
   "startup": "application",
   "boot": "auto",
