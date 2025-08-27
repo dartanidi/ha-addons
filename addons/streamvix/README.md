@@ -1,5 +1,12 @@
 # StreamViX Home Assistant Add-on
 
+[![Home Assistant Add-on](https://img.shields.io/badge/Home%20Assistant-Add--on-41BDF5.svg)](https://www.home-assistant.io/addons/)
+![Project Stage][project-stage-shield]
+![Project Maintenance][maintenance-shield]
+
+[project-stage-shield]: https://img.shields.io/badge/project%20stage-production%20ready-brightgreen.svg
+[maintenance-shield]: https://img.shields.io/maintenance/yes/2025.svg
+
 ![Supports aarch64 Architecture][aarch64-shield]
 ![Supports amd64 Architecture][amd64-shield]
 ![Supports armhf Architecture][armhf-shield]
