@@ -16,11 +16,9 @@ RUN pip3 install --upgrade pip
 # Crea directory di lavoro
 WORKDIR /app
 
-# Installa Poetry e usa i file di configurazione del progetto
-RUN pip3 install poetry && \
-    git clone https://github.com/mhdzumair/mediaflow-proxy.git . && \
-    poetry config virtualenvs.create false && \
-    poetry install --only=main
+# Clona il repository e installa con pyproject.toml
+RUN git clone https://github.com/mhdzumair/mediaflow-proxy.git . && \
+    pip3 install .
 
 # Copia script di avvio
 COPY run.sh /
