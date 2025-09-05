@@ -62,10 +62,6 @@ Contributions are welcome! If you'd like to contribute:
 3. Make your changes
 4. Submit a pull request
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ## ⭐ Show Your Support
 
 If you find these add-ons useful, please consider:
