@@ -1,12 +1,5 @@
 # Dartanidi's Home Assistant Add-ons
 
-[![GitHub Release][releases-shield]][releases]
-[![GitHub Activity][commits-shield]][commits]
-[![License][license-shield]](LICENSE)
-
-![Project Maintenance][maintenance-shield]
-[![GitHub Actions][actions-shield]][actions]
-
 This repository contains custom Home Assistant add-ons created by Dartanidi. These add-ons provide additional functionality to enhance your Home Assistant experience.
 
 ## 🚀 Installation
