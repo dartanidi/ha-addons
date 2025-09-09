@@ -1,0 +1,45 @@
+name: WordPress
+version: "1.0.0"
+slug: wordpress
+description: WordPress CMS per Home Assistant
+url: https://github.com/dartanidi/ha-addons
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+init: false
+startup: services
+boot: auto
+ports:
+  80/tcp: 8199
+  443/tcp: null
+ports_description:
+  80/tcp: "HTTP Web Server"
+  443/tcp: "HTTPS Web Server (opzionale)"
+map:
+  - "share:rw"
+  - "ssl"
+webui: "http://[HOST]:[PORT:80]"
+options:
+  wordpress_db_host: "core-mariadb"
+  wordpress_db_name: "wordpress"
+  wordpress_db_user: "wordpress"
+  wordpress_db_password: ""
+  wordpress_table_prefix: "wp_"
+  wordpress_debug: false
+  php_memory_limit: "256M"
+  php_max_execution_time: 300
+  wordpress_locale: "it_IT"
+schema:
+  wordpress_db_host: str
+  wordpress_db_name: str
+  wordpress_db_user: str
+  wordpress_db_password: password
+  wordpress_table_prefix: str
+  wordpress_debug: bool
+  php_memory_limit: str
+  php_max_execution_time: int
+  wordpress_locale: str
+image: ghcr.io/home-assistant/{arch}-addon-wordpress
