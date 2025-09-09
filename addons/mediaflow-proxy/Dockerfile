@@ -17,7 +17,7 @@ RUN pip3 install --upgrade pip
 WORKDIR /app
 
 # Clona il repository e installa con pyproject.toml
-RUN git clone https://github.com/nzo66/mediaflow-proxy.git . && \
+RUN git clone https://github.com/mhdzumair/mediaflow-proxy.git . && \
     pip3 install .
 
 # Copia script di avvio
