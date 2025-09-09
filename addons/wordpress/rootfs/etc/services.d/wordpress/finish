@@ -1,8 +1,0 @@
-#!/usr/bin/with-contenv bashio
-# ==============================================================================
-# Home Assistant Add-on: WordPress
-# Take down the S6 supervision tree when WordPress fails
-# ==============================================================================
-
-bashio::log.info "WordPress service stopped. Shutting down add-on..."
-halt
