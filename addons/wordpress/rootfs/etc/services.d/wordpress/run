@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# Avvia PHP-FPM
+# Avvia PHP-FPM in background
 php-fpm81
 
-# Avvia Nginx
-nginx -g "daemon off;"
+# Avvia Nginx in foreground
+exec nginx -g "daemon off;"
