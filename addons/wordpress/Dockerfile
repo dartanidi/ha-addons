@@ -1,5 +1,5 @@
 ARG BUILD_FROM
-FROM $BUFROM
+FROM $BUILD_FROM
 
 # Installa le dipendenze necessarie
 RUN apk add --no-cache \
