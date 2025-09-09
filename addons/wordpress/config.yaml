@@ -42,4 +42,6 @@ schema:
   php_memory_limit: str
   php_max_execution_time: int
   wordpress_locale: str
+  auto_create_database: bool
+  mariadb_root_password: password
 image: ghcr.io/home-assistant/{arch}-addon-wordpress
