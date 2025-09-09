@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-
-# Avvia i servizi
-echo "Avvio dei servizi..."
-exec s6-svscan /etc/services.d
