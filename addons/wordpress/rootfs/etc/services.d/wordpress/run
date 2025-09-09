@@ -1,0 +1,14 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Home Assistant Add-on: WordPress
+# Runs WordPress with Nginx and PHP-FPM
+# ==============================================================================
+
+# Wait for MariaDB to become available
+bashio::log.info "Waiting for MariaDB to be ready..."
+bashio::net.wait_for 3306 "$(bashio::config 'wordpress_db_host')" 300
+
+bashio::log.info "Starting WordPress services..."
+
+# Run the main setup script
+exec /usr/bin/run.sh
