@@ -1,5 +1,5 @@
 ARG BUILD_FROM
-FROM $BUILD_FROM
+FROM $BUFROM
 
 # Installa le dipendenze necessarie
 RUN apk add --no-cache \
@@ -23,7 +23,8 @@ RUN apk add --no-cache \
     php81-mbstring \
     php81-gd \
     php81-exif \
-    mariadb-client
+    mariadb-client \
+    netcat-openbsd  # Aggiungi netcat per il check del database
 
 # Copia gli script
 COPY rootfs /
@@ -33,8 +34,13 @@ RUN mkdir -p /var/www/html && \
     chown -R nginx:nginx /var/www && \
     chmod -R 755 /var/www
 
+# Rendi eseguibili gli script
+RUN chmod +x /etc/cont-init.d/wordpress-setup && \
+    chmod +x /etc/services.d/wordpress/run && \
+    chmod +x /run.sh
+
 WORKDIR /var/www/html
 
 EXPOSE 80
 
-CMD [ "/init" ]
+CMD [ "/run.sh" ]
