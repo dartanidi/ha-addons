@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-# Avvia PHP-FPM in background
-php-fpm81
-
-# Avvia Nginx in foreground
-exec nginx -g "daemon off;"
+# Avvia i servizi
+echo "Avvio dei servizi..."
+exec s6-svscan /etc/services.d
