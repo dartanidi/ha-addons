@@ -2,7 +2,7 @@
 
 ## [1.0.1] - 2025-09-09
 ### Added
-- Based on v 2.2.1
+- New commits from nzo66
 
 ## [1.0.0] - 2025-08-28
 ### Added
