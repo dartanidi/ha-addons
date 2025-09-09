@@ -1,8 +1,10 @@
-ARG BUILD_FROM=ghcr.io/hassio-addons/base:15.0.1
-FROM ${BUILD_FROM}
+ARG BUILD_FROM
+FROM $BUILD_FROM
 
-# Installa dipendenze
+# Installa le dipendenze necessarie
 RUN apk add --no-cache \
+    bash \
+    curl \
     nginx \
     php81 \
     php81-fpm \
@@ -20,40 +22,19 @@ RUN apk add --no-cache \
     php81-session \
     php81-mbstring \
     php81-gd \
-    php81-zip \
-    php81-opcache \
-    php81-fileinfo \
     php81-exif \
-    php81-pecl-imagick \
-    supervisor \
-    curl \
-    wget \
-    mysql-client \
-    netcat-openbsd
+    mariadb-client
 
-# Crea utente e directory
-RUN adduser -D -S -h /var/cache/nginx nginx && \
-    mkdir -p /var/www/html && \
-    mkdir -p /run/nginx && \
-    mkdir -p /run/php && \
-    mkdir -p /var/log/supervisor
-
-# Scarica e installa WordPress
-WORKDIR /tmp
-RUN wget https://wordpress.org/latest.tar.gz && \
-    tar xzf latest.tar.gz && \
-    mv wordpress/* /var/www/html/ && \
-    rm -rf wordpress latest.tar.gz
-
-# Imposta permessi
-RUN chown -R nginx:nginx /var/www/html && \
-    chmod -R 755 /var/www/html
-
-# Copia file di configurazione
+# Copia gli script
 COPY rootfs /
 
-# Esponi porta
+# Crea le directory necessarie
+RUN mkdir -p /var/www/html && \
+    chown -R nginx:nginx /var/www && \
+    chmod -R 755 /var/www
+
+WORKDIR /var/www/html
+
 EXPOSE 80
 
-# Comando di avvio
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+CMD [ "/init" ]
