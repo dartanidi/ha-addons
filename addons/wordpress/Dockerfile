@@ -27,7 +27,9 @@ RUN apk add --no-cache \
     php81-pecl-imagick \
     supervisor \
     curl \
-    wget
+    wget \
+    mysql-client \
+    netcat-openbsd
 
 # Crea utente e directory
 RUN adduser -D -S -h /var/cache/nginx nginx && \
