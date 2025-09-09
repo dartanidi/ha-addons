@@ -154,10 +154,90 @@ EOF
 
 bashio::log.info "Aspetto che MariaDB sia disponibile..."
 
+# Funzione per la creazione automatica del database
+setup_database() {
+    if [ "${AUTO_CREATE_DB}" = "true" ]; then
+        bashio::log.info "Creazione automatica database abilitata"
+        
+        # Ottieni la password root di MariaDB
+        local ROOT_PASSWORD="${MARIADB_ROOT_PASSWORD}"
+        
+        # Prova diverse modalità per ottenere la password root
+        if [ -z "${ROOT_PASSWORD}" ]; then
+            # Prova a leggere da supervisor secrets
+            if bashio::services.available "mysql"; then
+                ROOT_PASSWORD=$(bashio::services.get "mysql" "password" 2>/dev/null || echo "")
+            fi
+        fi
+        
+        # Se ancora non abbiamo la password, prova percorsi comuni
+        if [ -z "${ROOT_PASSWORD}" ]; then
+            for pwd_file in "/data/databases/root_password" "/share/mariadb/root_password" "/config/mariadb_root"; do
+                if [ -f "${pwd_file}" ]; then
+                    ROOT_PASSWORD=$(cat "${pwd_file}" 2>/dev/null || echo "")
+                    break
+                fi
+            done
+        fi
+        
+        # Funzione per eseguire comandi MySQL
+        mysql_execute() {
+            local query="$1"
+            local mysql_cmd="mysql -h ${DB_HOST} -P 3306"
+            
+            if [ -n "${ROOT_PASSWORD}" ]; then
+                echo "${query}" | ${mysql_cmd} -u root -p"${ROOT_PASSWORD}" 2>/dev/null
+            else
+                echo "${query}" | ${mysql_cmd} -u root 2>/dev/null
+            fi
+        }
+        
+        # Attendi che MariaDB sia pronto per le connessioni
+        local retries=0
+        while [ ${retries} -lt 30 ]; do
+            if mysql_execute "SELECT 1;" >/dev/null 2>&1; then
+                bashio::log.info "MariaDB è pronto per la configurazione"
+                break
+            fi
+            sleep 2
+            retries=$((retries + 1))
+        done
+        
+        if [ ${retries} -eq 30 ]; then
+            bashio::log.error "Impossibile connettersi a MariaDB per la configurazione automatica"
+            bashio::log.info "Procedo assumendo che database e utente esistano già"
+            return 0
+        fi
+        
+        # Crea database se non esiste
+        bashio::log.info "Creazione database ${DB_NAME}..."
+        mysql_execute "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+        
+        # Crea utente se non esiste
+        bashio::log.info "Configurazione utente ${DB_USER}..."
+        mysql_execute "CREATE USER IF NOT EXISTS '${DB_USER}'@'%' IDENTIFIED BY '${DB_PASSWORD}';"
+        
+        # Aggiorna password (nel caso l'utente esistesse già)
+        mysql_execute "ALTER USER '${DB_USER}'@'%' IDENTIFIED BY '${DB_PASSWORD}';"
+        
+        # Assegna privilegi
+        bashio::log.info "Assegnazione privilegi..."
+        mysql_execute "GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'%';"
+        mysql_execute "FLUSH PRIVILEGES;"
+        
+        bashio::log.info "Configurazione database automatica completata!"
+    else
+        bashio::log.info "Creazione automatica database disabilitata - assumo che database esista già"
+    fi
+}
+
 # Attendi che il database sia disponibile
 while ! nc -z "${DB_HOST}" 3306; do
     sleep 1
 done
+
+# Esegui setup database se abilitato
+setup_database
 
 bashio::log.info "Configurazione completata! WordPress è pronto."
 
