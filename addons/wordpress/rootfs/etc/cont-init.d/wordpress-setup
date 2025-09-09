@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+
+# Configurazione di WordPress
+echo "Configurazione di WordPress..."
+
+# Attendi che il database sia pronto
+echo "Attesa del database..."
+while ! nc -z "$DB_HOST" 3306; do
+  sleep 1
+done
+echo "Database pronto!"
+
+# Scarica WordPress se non esiste
+if [ ! -f /var/www/html/wp-config.php ]; then
+    echo "Scaricamento di WordPress..."
+    curl -o /tmp/latest.tar.gz https://wordpress.org/latest.tar.gz
+    tar xzf /tmp/latest.tar.gz -C /var/www --strip-components=1
+    rm /tmp/latest.tar.gz
+    
+    # Configura i permessi
+    chown -R nginx:nginx /var/www/html
+    chmod -R 755 /var/www/html
+fi
+
+# Configura il database di WordPress
+if [ ! -f /var/www/html/wp-config.php ]; then
+    echo "Creazione del file di configurazione WordPress..."
+    cp /var/www/html/wp-config-sample.php /var/www/html/wp-config.php
+    
+    # Aggiorna le configurazioni del database
+    sed -i "s/database_name_here/${DB_NAME}/g" /var/www/html/wp-config.php
+    sed -i "s/username_here/${DB_USER}/g" /var/www/html/wp-config.php
+    sed -i "s/password_here/${DB_PASSWORD}/g" /var/www/html/wp-config.php
+    sed -i "s/localhost/${DB_HOST}/g" /var/www/html/wp-config.php
+    sed -i "s/wp_/${DB_PREFIX}/g" /var/www/html/wp-config.php
+    
+    # Aggiungi le costanti per il set dei caratteri
+    echo "define('DB_CHARSET', '${DB_CHARSET}');" >> /var/www/html/wp-config.php
+    echo "define('DB_COLLATE', '${DB_COLLATE}');" >> /var/www/html/wp-config.php
+    
+    # Genera le chiavi di sicurezza
+    curl -s https://api.wordpress.org/secret-key/1.1/salt/ >> /var/www/html/wp-config.php
+    
+    # Aggiungi la configurazione per gli aggiornamenti
+    echo "define('FS_METHOD', 'direct');" >> /var/www/html/wp-config.php
+fi
+
+# Configura PHP-FPM
+echo "Configurazione di PHP-FPM..."
+sed -i 's/;listen.owner = nobody/listen.owner = nginx/g' /etc/php81/php-fpm.d/www.conf
+sed -i 's/;listen.group = nobody/listen.group = nginx/g' /etc/php81/php-fpm.d/www.conf
+sed -i 's/user = nobody/user = nginx/g' /etc/php81/php-fpm.d/www.conf
+sed -i 's/group = nobody/group = nginx/g' /etc/php81/php-fpm.d/www.conf
+
+# Configura Nginx
+echo "Configurazione di Nginx..."
+cat > /etc/nginx/http.d/default.conf <<EOF
+server {
+    listen 80;
+    server_name _;
+    root /var/www/html;
+    index index.php index.html index.htm;
+
+    location / {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass 127.0.0.1:9000;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        include fastcgi_params;
+    }
+}
+EOF
+
+echo "Configurazione completata!"
