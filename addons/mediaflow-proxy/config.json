@@ -1,6 +1,6 @@
 {
   "name": "MediaFlow Proxy",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "slug": "mediaflow-proxy",
   "description": "High-performance proxy server for streaming media with DRM decryption",
   "url": "https://github.com/dartanidi/ha-addons/addons/mediaflow-proxy",
