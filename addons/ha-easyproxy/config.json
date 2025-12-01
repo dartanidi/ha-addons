@@ -1,0 +1,24 @@
+{
+  "name": "EasyProxy",
+  "version": "1.0.0",
+  "slug": "easyproxy",
+  "description": "Server Proxy Universale per Streaming HLS (nzo66)",
+  "arch": ["aarch64", "amd64", "armv7"],
+  "startup": "application",
+  "boot": "auto",
+  "options": {
+    "global_proxy": "",
+    "dlhd_proxy": "",
+    "vavoo_proxy": ""
+  },
+  "schema": {
+    "global_proxy": "str?",
+    "dlhd_proxy": "str?",
+    "vavoo_proxy": "str?"
+  },
+  "ports": {
+    "7860/tcp": 7860
+  },
+  "map": ["config:rw"],
+  "init": false
+}
