@@ -6,18 +6,18 @@
   "arch": ["aarch64", "amd64", "armv7"],
   "startup": "application",
   "boot": "auto",
+  "host_network": true,
   "options": {
     "global_proxy": "",
     "dlhd_proxy": "",
-    "vavoo_proxy": ""
+    "vavoo_proxy": "",
+    "port": 7860
   },
   "schema": {
     "global_proxy": "str?",
     "dlhd_proxy": "str?",
-    "vavoo_proxy": "str?"
-  },
-  "ports": {
-    "7860/tcp": 7860
+    "vavoo_proxy": "str?",
+    "port": "port"
   },
   "map": ["config:rw"],
   "init": false
