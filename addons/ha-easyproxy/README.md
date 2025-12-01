@@ -38,7 +38,7 @@ Puoi configurare i proxy esterni direttamente dalla scheda "Configurazione" dell
 | `global_proxy` | (Opzionale) URL del proxy globale per tutto il traffico (es. `http://user:pass@ip:port`). |
 | `dlhd_proxy` | (Opzionale) Proxy specifico per DaddyLiveHD (supporta lista separata da virgole). |
 | `vavoo_proxy` | (Opzionale) Proxy specifico per Vavoo. |
-| `port` | (Opzionale) Pporta di ascolto del proxy. Default 7860. |
+| `port` | (Opzionale) Porta di ascolto del proxy. Default 7860. |
 | `password` | (Opzionale) Password di protezione del proxy da utilizzi indesiderati. |
 
 ## 📚 Utilizzo
