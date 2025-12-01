@@ -17,11 +17,12 @@ RUN apk add --no-cache \
 # Imposta la cartella di lavoro
 WORKDIR /app
 
-# Clona il repository (scarica l'ultima versione disponibile)
+# Clona il repository
 RUN git clone https://github.com/nzo66/EasyProxy.git .
 
 # Installa le dipendenze Python del progetto
-RUN pip install --no-cache-dir -r requirements.txt
+# ABBIAMO AGGIUNTO: --break-system-packages
+RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Copia lo script di avvio locale
 COPY run.sh /
