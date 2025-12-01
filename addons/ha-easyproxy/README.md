@@ -38,9 +38,8 @@ Puoi configurare i proxy esterni direttamente dalla scheda "Configurazione" dell
 | `global_proxy` | (Opzionale) URL del proxy globale per tutto il traffico (es. `http://user:pass@ip:port`). |
 | `dlhd_proxy` | (Opzionale) Proxy specifico per DaddyLiveHD (supporta lista separata da virgole). |
 | `vavoo_proxy` | (Opzionale) Proxy specifico per Vavoo. |
-
-**Nota sulla Rete:**
-L'add-on espone internamente la porta `7860`. Puoi mapparla su qualsiasi porta esterna (es. 8080) nella scheda "Rete" di Home Assistant.
+| `port` | (Opzionale) Pporta di ascolto del proxy. Default 7860. |
+| `password` | (Opzionale) Password di protezione del proxy da utilizzi indesiderati. |
 
 ## 📚 Utilizzo
 
