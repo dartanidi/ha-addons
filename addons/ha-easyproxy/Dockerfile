@@ -2,6 +2,7 @@ ARG BUILD_FROM
 FROM $BUILD_FROM
 
 # Installazione dipendenze di sistema
+# NOTA: Abbiamo aggiunto 'ffmpeg' alla lista
 RUN apk add --no-cache \
     git \
     python3 \
@@ -12,7 +13,8 @@ RUN apk add --no-cache \
     musl-dev \
     python3-dev \
     libffi-dev \
-    openssl-dev
+    openssl-dev \
+    ffmpeg
 
 # Imposta la cartella di lavoro
 WORKDIR /app
@@ -21,7 +23,7 @@ WORKDIR /app
 RUN git clone https://github.com/nzo66/EasyProxy.git .
 
 # Installa le dipendenze Python del progetto
-# ABBIAMO AGGIUNTO: --break-system-packages
+# Manteniamo il break-system-packages per compatibilità con Alpine recente
 RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Copia lo script di avvio locale
