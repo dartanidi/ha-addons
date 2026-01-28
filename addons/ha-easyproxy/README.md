@@ -7,7 +7,7 @@ Questo è un add-on non ufficiale per Home Assistant che permette di eseguire **
 Tutto il merito per il software **EasyProxy** va allo sviluppatore originale **realbestia2**.
 Questo add-on è semplicemente un "contenitore" per facilitare l'installazione su Home Assistant OS.
 
-* **Repository Originale:** [https://github.com/nzo66/EasyProxy](https://github.com/realbestia2/EasyProxy)
+* **Repository Originale:** [https://github.com/realbestia2/EasyProxy](https://github.com/realbestia2/EasyProxy)
 * **Segnalazione Bug Software:** Se il proxy non decodifica uno stream o ha errori interni, per favore verifica prima sul repository originale.
 * **Segnalazione Bug Add-on:** Se l'add-on non si installa o non si avvia su Home Assistant, apri una issue in questo repository.
 
