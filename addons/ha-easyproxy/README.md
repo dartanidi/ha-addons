@@ -43,9 +43,6 @@ Puoi configurare i proxy esterni direttamente dalla scheda "Configurazione" dell
 
 ## 📚 Utilizzo
 
-Una volta avviato, l'interfaccia web sarà disponibile all'indirizzo:
+Una volta avviato, il proxy sarà disponibile all'indirizzo:
 `http://<IP-HOME-ASSISTANT>:<PORTA-SCELTA>` (default 7860)
-
-Esempi di URL per i player (VLC, Kodi, TiviMate):
-```text
-http://<IP-HA>:7860/proxy/manifest.m3u8?url=[https://example.com/stream.m3u8](https://example.com/stream.m3u8)
+Per esporre il proxy all'esterno è necessario utilizzare un reverse proxy come NGINX Proxy Manager o simile.
