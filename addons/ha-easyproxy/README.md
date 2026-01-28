@@ -4,10 +4,10 @@ Questo è un add-on non ufficiale per Home Assistant che permette di eseguire **
 
 ## ⚠️ Credits & Riferimento Originale
 
-Tutto il merito per il software **EasyProxy** va allo sviluppatore originale **nzo66**.
+Tutto il merito per il software **EasyProxy** va allo sviluppatore originale **realbestia2**.
 Questo add-on è semplicemente un "contenitore" per facilitare l'installazione su Home Assistant OS.
 
-* **Repository Originale:** [https://github.com/nzo66/EasyProxy](https://github.com/nzo66/EasyProxy)
+* **Repository Originale:** [https://github.com/nzo66/EasyProxy](https://github.com/realbestia2/EasyProxy)
 * **Segnalazione Bug Software:** Se il proxy non decodifica uno stream o ha errori interni, per favore verifica prima sul repository originale.
 * **Segnalazione Bug Add-on:** Se l'add-on non si installa o non si avvia su Home Assistant, apri una issue in questo repository.
 
@@ -24,7 +24,7 @@ Caratteristiche principali supportate dal progetto originale:
 
 ## 🚀 Installazione
 
-1.  Aggiungi questo repository al tuo Add-on Store di Home Assistant.
+1.  Aggiungi il repository **https://github.com/dartanidi/ha-addons** al tuo Add-on Store di Home Assistant.
 2.  Cerca "EasyProxy" e clicca su Installa.
 3.  Attendi qualche minuto (l'installazione compila le dipendenze Python, potrebbe richiedere tempo su Raspberry Pi).
 4.  Avvia l'add-on.
@@ -35,9 +35,9 @@ Puoi configurare i proxy esterni direttamente dalla scheda "Configurazione" dell
 
 | Opzione | Descrizione |
 | :--- | :--- |
-| `global_proxy` | (Opzionale) URL del proxy globale per tutto il traffico (es. `http://user:pass@ip:port`). |
-| `dlhd_proxy` | (Opzionale) Proxy specifico per DaddyLiveHD (supporta lista separata da virgole). |
-| `vavoo_proxy` | (Opzionale) Proxy specifico per Vavoo. |
+| `global_proxy` | (Opzionale) URL del proxy di fallback. |
+| `transport_routes` | (Opzionale) Sistema avanzato di proxy routing basato su patterns URL. |
+| `mpd_mode` | (default su legacy) Modalità di processing degli MPD. **Attenzione, in modalità ffmpeg richiede una considerevole capacità di calcolo, per cui non funziona bene su molti PC ad uso Home Assistant**. |
 | `port` | (Opzionale) Porta di ascolto del proxy. Default 7860. |
 | `password` | (Opzionale) Password di protezione del proxy da utilizzi indesiderati. |
 
