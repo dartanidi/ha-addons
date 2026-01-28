@@ -30,7 +30,7 @@ Click the button above to automatically add this repository to your Home Assista
 
 Currently, this repository includes:
 
-- **MediaFlow Proxy for Home Assistant**:  high-performance proxy server for streaming media, supporting HTTP(S), HLS, and MPEG-DASH with real-time DRM decryption.
+- **EasyProxy for Home Assistant**:  high-performance proxy server for streaming media, supporting HTTP(S), HLS, and MPEG-DASH with real-time DRM decryption.
   
   - More add-ons coming soon!
 
