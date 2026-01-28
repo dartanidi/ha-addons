@@ -44,7 +44,7 @@ Puoi configurare i proxy esterni direttamente dalla scheda "Configurazione" dell
 ## 📚 Utilizzo
 
 Una volta avviato, il proxy sarà disponibile all'indirizzo:
-`http://<IP-HOME-ASSISTANT>:<PORTA-SCELTA>` (default 7860)
+`http://<IP-HOME-ASSISTANT>:<PORTA-SCELTA>` (default 7860).
 Per esporre il proxy all'esterno è necessario utilizzare un reverse proxy come NGINX Proxy Manager o simile.
 
 **N.B. Qualora ci siano degli aggiornamenti al repository originale per nuove fix e/o implementazioni, per aggiornare il proxy locale è sufficiente effettuare il rebuild/ricostruzione dell'add-on. Non verranno rilasciate nuove versioni dell'add-on a meno di nuove implementazioni che non potranno essere abilitate mediante semplice ricostruzione**
