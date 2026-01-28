@@ -20,7 +20,7 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 # Clona il repository
-RUN git clone https://github.com/nzo66/EasyProxy.git .
+RUN git clone https://github.com/realbestia2/EasyProxy.git .
 
 # Installa le dipendenze Python del progetto
 # Manteniamo il break-system-packages per compatibilità con Alpine recente
