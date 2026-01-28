@@ -31,7 +31,7 @@ Caratteristiche principali supportate dal progetto originale:
 
 ## ⚙️ Configurazione
 
-Puoi configurare i proxy esterni direttamente dalla scheda "Configurazione" dell'add-on. Non è necessario modificare file `.env`.
+Puoi configurare i proxy esterni direttamente dalla scheda "Configurazione" dell'add-on.
 
 | Opzione | Descrizione |
 | :--- | :--- |
