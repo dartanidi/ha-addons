@@ -35,16 +35,8 @@ if [ ! -f "$JAVA_BIN" ]; then
 fi
 
 echo "Starting Traccar on port 8082..."
-echo "Database: ${DB_URL}"
 
 cd /opt/traccar
 
-# Avvia con output dettagliato e rimani in foreground
-exec "$JAVA_BIN" \
-    -Xms512m \
-    -Xmx512m \
-    -Djava.net.preferIPv4Stack=true \
-    -Dfile.encoding=UTF-8 \
-    -jar tracker-server.jar \
-    conf/traccar.xml \
-    2>&1 | tee /config/traccar.log
+# Avvia Traccar
+exec "$JAVA_BIN" -Xms512m -Xmx512m -Djava.net.preferIPv4Stack=true -jar tracker-server.jar conf/traccar.xml
