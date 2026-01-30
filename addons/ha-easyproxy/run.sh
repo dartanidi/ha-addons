@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 
-echo "Avvio EasyProxy Add-on (v2.5.0)..."
+echo "Avvio EasyProxy Add-on ..."
 
 # 1. Recupero configurazioni da Home Assistant
 GLOBAL=$(bashio::config 'global_proxy')
