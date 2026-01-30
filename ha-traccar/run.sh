@@ -1,5 +1,5 @@
 #!/bin/bash
-set -ex  # Aggiungo -x per vedere ogni comando eseguito
+set -e
 
 CONFIG_DIR="/config"
 USER_XML="$CONFIG_DIR/traccar.xml"
@@ -34,22 +34,17 @@ if [ ! -f "$JAVA_BIN" ]; then
     JAVA_BIN="java"
 fi
 
-echo "=== DEBUG INFO ==="
-echo "Working directory: $(pwd)"
-echo "Java binary: $JAVA_BIN"
-ls -la /opt/traccar/ || echo "Cannot list /opt/traccar"
-ls -la /opt/traccar/conf/ || echo "Cannot list /opt/traccar/conf"
-echo "==================="
-
-echo "Starting Traccar..."
-sleep 3
+echo "Starting Traccar on port 8082..."
+echo "Database: ${DB_URL}"
 
 cd /opt/traccar
 
-# Mostra il comando che verrà eseguito
-echo "Executing: $JAVA_BIN -Xms512m -Xmx512m -Djava.net.preferIPv4Stack=true -jar tracker-server.jar conf/traccar.xml"
-
-# Avvia senza redirigere stderr
-"$JAVA_BIN" -Xms512m -Xmx512m -Djava.net.preferIPv4Stack=true -jar tracker-server.jar conf/traccar.xml
-
-echo "Traccar exited!"
+# Avvia con output dettagliato e rimani in foreground
+exec "$JAVA_BIN" \
+    -Xms512m \
+    -Xmx512m \
+    -Djava.net.preferIPv4Stack=true \
+    -Dfile.encoding=UTF-8 \
+    -jar tracker-server.jar \
+    conf/traccar.xml \
+    2>&1 | tee /config/traccar.log
