@@ -11,7 +11,7 @@ startup: services
 boot: auto
 init: false
 map:
-  - "addon_config:rw"
+  - "addon_configs:rw"
 ports:
   8082/tcp: 8082
   5000-5150/tcp: "5000-5150"
