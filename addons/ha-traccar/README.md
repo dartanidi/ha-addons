@@ -56,13 +56,21 @@ Out of the box, **only port 5055 is configured**.
 * **Use for:** Official Traccar Client (Android/iOS) and OsmAnd protocol.
 
 ### Enabling Other Trackers (Hardware Devices)
-The add-on docker container maps the port range `5000-5150` to the host, but the internal Traccar configuration disables unused protocols by default to save memory.
+
+The add-on Docker container maps the port range `5000-5150` to the host, but the internal Traccar configuration disables unused protocols by default to save memory.
+
+**You do not need to rebuild the add-on.** The configuration file is fully editable directly from Home Assistant.
 
 To enable specific hardware protocols (e.g., Teltonika, TK103):
 
-1. You must edit the `traccar/traccar.template.xml` file in this repository (if you have local access) or fork the repo.
-2. Uncomment the specific entry for your device.
-3. Rebuild/Reinstall the add-on.
+1. **Start the add-on** at least once. This will generate the configuration file.
+2. Use the **File Editor** or **Samba Share** add-on to access your Home Assistant file system.
+3. Navigate to the folder `/addon_configs` and find the folder corresponding to this add-on (e.g., `..._traccar`).
+4. Open the `traccar.xml` file.
+5. Find the line corresponding to your device and **uncomment** it.
+```xml
+<entry key='teltonika.port'>5027</entry>
+7. **Restart** the Traccar add-on to apply the changes.
 
 ## 🔨 Troubleshooting
 
