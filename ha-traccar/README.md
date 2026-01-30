@@ -59,7 +59,7 @@ Before starting the add-on, go to the **Configuration** tab.
 | `database_driver` | Database driver (leave as default for MariaDB) | `com.mysql.cj.jdbc.Driver` |
 | `database_url` | Database connection URL | `jdbc:mysql://core-mariadb:3306/traccar?...` |
 | `database_user` | Database username | `traccar` |
-| `database_password` | **REQUIRED:** Database password | `cambiami_con_password_db` |
+| `database_password` | **REQUIRED:** Database password | `my_db_password` |
 
 ## 🌐 Accessing Traccar
 
