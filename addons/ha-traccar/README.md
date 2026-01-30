@@ -70,6 +70,7 @@ To enable specific hardware protocols (e.g., Teltonika, TK103):
 5. Find the line corresponding to your device and **uncomment** it.
 ```xml
 <entry key='teltonika.port'>5027</entry>
+```
 7. **Restart** the Traccar add-on to apply the changes.
 
 ## 🔨 Troubleshooting
