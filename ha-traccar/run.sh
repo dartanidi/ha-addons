@@ -13,7 +13,7 @@ OPTIONS_PATH="/data/options.json"
 # --- 2. GESTIONE CONFIGURAZIONE UTENTE ---
 if [ ! -d "$CONFIG_DIR" ]; then
     echo "[Traccar] ATTENZIONE: La cartella $CONFIG_DIR non risulta montata."
-    echo "[Traccar] Verifica il config.yaml e REINSTALLA l'add-on."
+    echo "[Traccar] Se hai appena corretto il config.yaml, devi DISINSTALLARE e REINSTALLARE l'add-on."
 else
     # Se il file utente non esiste, crealo dal template
     if [ ! -f "$USER_XML" ]; then
@@ -22,16 +22,14 @@ else
     fi
 fi
 
-# --- 3. LETTURA CREDENZIALI ---
+# --- 3. LETTURA E PULIZIA CREDENZIALI (Fix XML) ---
 if [ -f "$OPTIONS_PATH" ]; then
     export DB_DRIVER=$(jq --raw-output '.database_driver // empty' $OPTIONS_PATH)
     export DB_USER=$(jq --raw-output '.database_user // empty' $OPTIONS_PATH)
     export DB_PASSWORD=$(jq --raw-output '.database_password // empty' $OPTIONS_PATH)
     
-    # --- FIX CRITICO XML ---
-    # Leggiamo l'URL grezzo
+    # FIX CRITICO: Sostituisce '&' con '&amp;' nell'URL per renderlo XML-compatibile
     RAW_DB_URL=$(jq --raw-output '.database_url // empty' $OPTIONS_PATH)
-    # Sostituiamo ogni '&' con '&amp;' per renderlo valido in XML
     export DB_URL=$(echo "$RAW_DB_URL" | sed 's/&/&amp;/g')
 else
     echo "[Traccar] Errore: options.json non trovato."
@@ -48,11 +46,12 @@ fi
 
 # --- 5. RICERCA JAVA E AVVIO ---
 JAVA_BIN="java"
+# Percorso tipico nelle immagini Traccar Alpine recenti
 if [ -f "/opt/traccar/jre/bin/java" ]; then
     JAVA_BIN="/opt/traccar/jre/bin/java"
-    echo "[Traccar] Trovato Java JRE interno: $JAVA_BIN"
 fi
 
+echo "[Traccar] Trovato Java: $JAVA_BIN"
 echo "[Traccar] Attesa DB (5s)..."
 sleep 5
 
