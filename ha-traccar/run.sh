@@ -1,56 +1,57 @@
 #!/bin/bash
 set -e
 
-echo "[Traccar] Avvio procedura di inizializzazione..."
+echo "[Traccar] Avvio..."
 
-# --- DEFINIZIONE PERCORSI ---
-# Questa è la cartella montata da 'map: - addon_config:rw'
-USER_CONFIG_DIR="/addon_configs"
-USER_CONFIG_FILE="$USER_CONFIG_DIR/traccar.xml"
+# --- 1. CONFIGURAZIONE PERCORSI ---
+CONFIG_DIR="/addon_configs"
+USER_XML="$CONFIG_DIR/traccar.xml"
+TEMPLATE_XML="/opt/traccar/conf/traccar.template.xml"
+RUN_XML="/opt/traccar/conf/traccar.xml"
+OPTIONS_PATH="/data/options.json"
 
-# Questi sono i percorsi interni del container
-INTERNAL_TEMPLATE="/opt/traccar/conf/traccar.template.xml"
-FINAL_RUN_CONFIG="/opt/traccar/conf/traccar.xml"
-CONFIG_PATH="/data/options.json"
-
-# --- 1. GESTIONE FILE CONFIGURAZIONE UTENTE ---
-if [ ! -d "$USER_CONFIG_DIR" ]; then
-    echo "[Traccar] ATTENZIONE: La cartella $USER_CONFIG_DIR non esiste."
-    echo "[Traccar] Assicurati di avere 'map: - addon_config:rw' nel config.yaml"
-    # Fallback per evitare crash se la cartella non è montata
-    mkdir -p "$USER_CONFIG_DIR"
-fi
-
-if [ ! -f "$USER_CONFIG_FILE" ]; then
-    echo "[Traccar] Primo avvio: Creazione file di configurazione utente..."
-    cp "$INTERNAL_TEMPLATE" "$USER_CONFIG_FILE"
-    echo "[Traccar] File creato in: $USER_CONFIG_FILE"
-    echo "[Traccar] Puoi modificarlo tramite Samba o File Editor nella cartella 'addon_configs'."
+# --- 2. GESTIONE CONFIGURAZIONE UTENTE ---
+if [ ! -d "$CONFIG_DIR" ]; then
+    echo "[Traccar] ATTENZIONE: La cartella $CONFIG_DIR non risulta montata."
+    echo "[Traccar] Verifica di aver scritto 'map: - addon_config:rw' (singolare) nel config.yaml"
 else
-    echo "[Traccar] Configurazione utente trovata."
+    # Se il file utente non esiste, crealo dal template
+    if [ ! -f "$USER_XML" ]; then
+        echo "[Traccar] Primo avvio: Creo file config utente in $USER_XML"
+        cp "$TEMPLATE_XML" "$USER_XML"
+    fi
 fi
 
-# --- 2. LETTURA CREDENZIALI (SUPERVISOR) ---
-if [ -f "$CONFIG_PATH" ]; then
-    export DB_DRIVER=$(jq --raw-output '.database_driver // empty' $CONFIG_PATH)
-    export DB_URL=$(jq --raw-output '.database_url // empty' $CONFIG_PATH)
-    export DB_USER=$(jq --raw-output '.database_user // empty' $CONFIG_PATH)
-    export DB_PASSWORD=$(jq --raw-output '.database_password // empty' $CONFIG_PATH)
+# --- 3. LETTURA CREDENZIALI ---
+if [ -f "$OPTIONS_PATH" ]; then
+    export DB_DRIVER=$(jq --raw-output '.database_driver // empty' $OPTIONS_PATH)
+    export DB_URL=$(jq --raw-output '.database_url // empty' $OPTIONS_PATH)
+    export DB_USER=$(jq --raw-output '.database_user // empty' $OPTIONS_PATH)
+    export DB_PASSWORD=$(jq --raw-output '.database_password // empty' $OPTIONS_PATH)
 else
-    echo "[Traccar] ERRORE CRITICO: options.json non trovato!"
-    exit 1
+    echo "[Traccar] Errore: options.json non trovato."
 fi
 
-# --- 3. INIEZIONE VARIABILI ---
-# Leggiamo il file editabile dall'utente, iniettiamo le password
-# e salviamo il risultato nel percorso che Java si aspetta.
-echo "[Traccar] Applicazione configurazione..."
-envsubst < "$USER_CONFIG_FILE" > "$FINAL_RUN_CONFIG"
+# --- 4. PREPARAZIONE XML FINALE ---
+if [ -f "$USER_XML" ]; then
+    echo "[Traccar] Uso configurazione utente."
+    envsubst < "$USER_XML" > "$RUN_XML"
+else
+    echo "[Traccar] Uso configurazione default."
+    envsubst < "$TEMPLATE_XML" > "$RUN_XML"
+fi
 
-# --- 4. AVVIO ---
+# --- 5. RICERCA JAVA E AVVIO ---
+# Cerchiamo l'eseguibile java nel percorso standard di Traccar Docker
+JAVA_BIN="java"
+if [ -f "/opt/traccar/jre/bin/java" ]; then
+    JAVA_BIN="/opt/traccar/jre/bin/java"
+    echo "[Traccar] Trovato Java JRE interno: $JAVA_BIN"
+fi
+
 echo "[Traccar] Attesa DB (5s)..."
 sleep 5
 
 echo "[Traccar] Avvio Server..."
 cd /opt/traccar
-exec java -Xms512m -Xmx512m -Djava.net.preferIPv4Stack=true -jar tracker-server.jar conf/traccar.xml
+exec $JAVA_BIN -Xms512m -Xmx512m -Djava.net.preferIPv4Stack=true -jar tracker-server.jar conf/traccar.xml
