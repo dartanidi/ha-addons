@@ -10,31 +10,33 @@ This add-on **requires an external database**. It does not include an embedded d
 
 We highly recommend using the official **MariaDB** add-on for Home Assistant.
 
-### 1. Prepare MariaDB
+### Prepare MariaDB
 
 Before installing Traccar, you **must** configure a database and user in MariaDB.
 
-#### Step 1: Create Database and User
+## Create Database and User
 
-Go to the **MariaDB** add-on configuration and add the following to your configuration:
-```yaml
-databases:
-  - traccar
+Before starting Traccar, you must configure the **MariaDB** add-on to create the specific database and user.
 
-logins:
-  - username: traccar
-    password: YOUR_SECURE_PASSWORD
-```
+1. Navigate to **Settings** > **Add-ons** > **MariaDB** > **Configuration**.
+2. Update the configuration lists with the following values:
 
-#### Step 2: Grant Permissions
+### Databases
+Add a new database name:
+* **Database**: `traccar`
 
-After creating the database and user, go to the **MariaDB Web UI** (or use a MySQL client) and grant the necessary permissions:
+### Logins
+Add a new user credential:
+* **Username**: `traccar`
+* **Password**: *(Enter a secure password of your choice)*
 
-1. Open the MariaDB add-on web interface
-2. Navigate to the **Rights** section
-3. Grant permissions to user `traccar` on database `traccar`:
+### Rights
+**Crucial:** You must grant full permissions so Traccar can create its tables.
+* **Username**: `traccar`
+* **Database**: `traccar`
+* **Privileges**: `ALL`
 
-**Restart the MariaDB add-on** after applying these changes.
+> **Note:** After saving these changes, **Restart the MariaDB add-on** to apply them.
 
 ## 💾 Installation
 
