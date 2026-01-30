@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "slug": "ha-traccar",
   "description": "Traccar server add-on for home assistant.",
-  "url": "https://github.com/dartanidi/ha-addons/tree/main/addons/ha-traccar",
+  "url": "https://github.com/dartanidi/ha-addons/tree/main/ha-traccar",
   "arch": [
     "aarch64",
-    "amd64"
+    "amd64",
+    "armv7"
   ],
   "startup": "services",
   "boot": "auto",
