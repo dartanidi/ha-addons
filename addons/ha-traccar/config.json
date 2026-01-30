@@ -1,4 +1,4 @@
-Assistant{
+{
   "name": "Traccar for Home Assistant",
   "version": "1.0.0",
   "slug": "ha-traccar",
