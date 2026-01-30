@@ -9,10 +9,7 @@ arch:
 startup: services
 boot: auto
 init: false
-ports:
-  8082/tcp: 8082
-  5000-5150/tcp: 5000
-  5000-5150/udp: 5000
+host_network: true
 options:
   database_driver: "com.mysql.cj.jdbc.Driver"
   database_url: "jdbc:mysql://core-mariadb:3306/traccar?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC&allowMultiQueries=true&autoReconnect=true"
