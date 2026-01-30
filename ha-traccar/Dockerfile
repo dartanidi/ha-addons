@@ -7,6 +7,6 @@ WORKDIR /opt/traccar
 COPY run.sh /run.sh
 COPY traccar.template.xml /opt/traccar/conf/traccar.template.xml
 
-RUN chmod a+x /run.sh
+RUN chmod +x /run.sh
 
-ENTRYPOINT ["/run.sh"]
+CMD ["/run.sh"]
