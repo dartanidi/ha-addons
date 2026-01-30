@@ -12,7 +12,7 @@ boot: auto
 init: false
 host_network: true
 map:
-  - "addon_configs:rw"
+  - "addon_config:rw"
 services:
   - "mysql:want"
 options:
