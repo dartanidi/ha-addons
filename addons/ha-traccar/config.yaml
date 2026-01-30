@@ -7,15 +7,17 @@ url: "https://github.com/dartanidi/ha-addons/tree/main/ha-traccar"
 arch:
   - aarch64
   - amd64
-startup:
-  services:
-    - mariadb:core-mariadb
+startup: services
+boot: auto
+init: false
+map:
+  - addon_config:rw
 ports:
   8082/tcp: 8082
   5000-5150/tcp: 5000-5150
   5000-5150/udp: 5000-5150
-map:
-  - addon_config:rw
+services:
+  - mariadb:core-mariadb
 options:
   database_driver: "com.mysql.cj.jdbc.Driver"
   database_url: "jdbc:mysql://core-mariadb:3306/traccar?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC&allowMultiQueries=true&autoReconnect=true"
