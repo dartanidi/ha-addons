@@ -1,5 +1,5 @@
 name: "Traccar Server for Home Assistant"
-version: "1.0.2"
+version: "1.0.0"
 slug: "traccar"
 description: "Traccar GPS tracking server for Home Assistant"
 url: "https://github.com/dartanidi/ha-addons/tree/main/ha-traccar"
@@ -16,11 +16,13 @@ map:
 services:
   - "mysql:want"
 options:
+  web_port: 8082
   database_driver: "com.mysql.cj.jdbc.Driver"
   database_url: "jdbc:mysql://core-mariadb:3306/traccar?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC&allowMultiQueries=true&autoReconnect=true"
   database_user: "traccar"
   database_password: "cambiami_con_password_db"
 schema:
+  web_port: port
   database_driver: str
   database_url: str
   database_user: str
