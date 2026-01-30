@@ -68,7 +68,7 @@ To enable specific hardware protocols (e.g., Teltonika, TK103):
 **To this:**
 ```xml
 <entry key='teltonika.port'>5027</entry>
-
+```
 3. Rebuild/Reinstall the add-on.
 
 ## 🔨 Troubleshooting
