@@ -3,6 +3,7 @@ version: "1.0.0"
 slug: "traccar"
 description: "Traccar GPS tracking server for Home Assistant"
 url: "https://github.com/dartanidi/ha-addons/tree/main/ha-traccar"
+webui: "http://[HOST]:[PORT:web_port]"
 arch:
   - aarch64
   - amd64
