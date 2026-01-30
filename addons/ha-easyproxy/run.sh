@@ -44,8 +44,6 @@ bashio::log.info "Avvio del server Gunicorn sulla porta $USER_PORT..."
 
 # 3. Avvio (Aggiornato con parametri timeout dal repo originale)
 exec gunicorn --bind 0.0.0.0:"$USER_PORT" \
-    --workers 2 \
+    --workers 4 \
     --worker-class aiohttp.worker.GunicornWebWorker \
-    --timeout 120 \
-    --graceful-timeout 120 \
     app:app
