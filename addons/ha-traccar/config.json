@@ -1,9 +1,9 @@
-{
-  "name": "Traccar Official",
+Assistant{
+  "name": "Traccar for Home Assistant",
   "version": "1.0.0",
-  "slug": "traccar_official",
-  "description": "Piattaforma di tracciamento GPS open source. Versione Docker ufficiale Alpine.",
-  "url": "https://github.com/dartanidi/ha-addons/tree/main/traccar",
+  "slug": "ha-traccar",
+  "description": "Traccar add-on for Home Assistant.",
+  "url": "https://github.com/dartanidi/ha-addons/tree/main/ha-traccar",
   "arch": [
     "aarch64",
     "amd64"
