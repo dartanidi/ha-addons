@@ -65,27 +65,12 @@ Before starting the add-on, go to the **Configuration** tab.
 | `database_user` | Database username | `traccar` |
 | `database_password` | **REQUIRED:** Database password | `cambiami_con_password_db` |
 
-### Example Configuration
-```yaml
-web_port: 8082
-database_driver: com.mysql.cj.jdbc.Driver
-database_url: "jdbc:mysql://core-mariadb:3306/traccar?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC&allowMultiQueries=true&autoReconnect=true"
-database_user: traccar
-database_password: YOUR_SECURE_PASSWORD
-```
-
 ## 🌐 Accessing Traccar
 
 After starting the add-on, access the web interface at:
 ```
 http://YOUR_HOME_ASSISTANT_IP:8082
 ```
-
-**Default credentials:**
-- Username: `admin`
-- Password: `admin`
-
-**⚠️ Important:** Change the default password immediately after first login!
 
 ## 📍 GPS Protocols & Ports
 
