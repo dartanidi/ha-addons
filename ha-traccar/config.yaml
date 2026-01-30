@@ -1,5 +1,5 @@
-name: "Traccar Server"
-version: "1.0.3"
+name: "Traccar Server for Home Assistant"
+version: "1.0.0"
 slug: "traccar"
 description: "Traccar GPS tracking server for Home Assistant"
 url: "https://github.com/dartanidi/ha-addons/tree/main/ha-traccar"
