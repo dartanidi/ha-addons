@@ -13,7 +13,7 @@ OPTIONS_PATH="/data/options.json"
 # --- 2. GESTIONE CONFIGURAZIONE UTENTE ---
 if [ ! -d "$CONFIG_DIR" ]; then
     echo "[Traccar] ATTENZIONE: La cartella $CONFIG_DIR non risulta montata."
-    echo "[Traccar] Verifica di aver scritto 'map: - addon_config:rw' (singolare) nel config.yaml"
+    echo "[Traccar] Verifica il config.yaml e REINSTALLA l'add-on."
 else
     # Se il file utente non esiste, crealo dal template
     if [ ! -f "$USER_XML" ]; then
@@ -25,9 +25,14 @@ fi
 # --- 3. LETTURA CREDENZIALI ---
 if [ -f "$OPTIONS_PATH" ]; then
     export DB_DRIVER=$(jq --raw-output '.database_driver // empty' $OPTIONS_PATH)
-    export DB_URL=$(jq --raw-output '.database_url // empty' $OPTIONS_PATH)
     export DB_USER=$(jq --raw-output '.database_user // empty' $OPTIONS_PATH)
     export DB_PASSWORD=$(jq --raw-output '.database_password // empty' $OPTIONS_PATH)
+    
+    # --- FIX CRITICO XML ---
+    # Leggiamo l'URL grezzo
+    RAW_DB_URL=$(jq --raw-output '.database_url // empty' $OPTIONS_PATH)
+    # Sostituiamo ogni '&' con '&amp;' per renderlo valido in XML
+    export DB_URL=$(echo "$RAW_DB_URL" | sed 's/&/&amp;/g')
 else
     echo "[Traccar] Errore: options.json non trovato."
 fi
@@ -42,7 +47,6 @@ else
 fi
 
 # --- 5. RICERCA JAVA E AVVIO ---
-# Cerchiamo l'eseguibile java nel percorso standard di Traccar Docker
 JAVA_BIN="java"
 if [ -f "/opt/traccar/jre/bin/java" ]; then
     JAVA_BIN="/opt/traccar/jre/bin/java"
