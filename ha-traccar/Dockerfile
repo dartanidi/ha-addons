@@ -9,4 +9,4 @@ COPY traccar.template.xml /opt/traccar/conf/traccar.template.xml
 
 RUN chmod +x /run.sh
 
-CMD ["/run.sh"]
+CMD ["/bin/bash", "/run.sh"]
