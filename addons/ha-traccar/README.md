@@ -22,6 +22,7 @@ logins:
   - username: traccar
     password: YOUR_SECURE_PASSWORD
     host: "%"
+```
 > **Note:** `host: "%"` is mandatory because the Traccar container connects from a separate internal Docker IP, not localhost.
 
 **Restart the MariaDB add-on** after applying these changes.
