@@ -2,7 +2,6 @@ ARG BUILD_FROM
 FROM $BUILD_FROM
 
 # Installazione dipendenze di sistema
-# NOTA: Abbiamo aggiunto 'ffmpeg' alla lista
 RUN apk add --no-cache \
     git \
     python3 \
