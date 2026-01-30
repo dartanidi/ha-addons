@@ -62,13 +62,6 @@ To enable specific hardware protocols (e.g., Teltonika, TK103):
 
 1. You must edit the `traccar/traccar.template.xml` file in this repository (if you have local access) or fork the repo.
 2. Uncomment the specific entry for your device.
-
-**Change this:**
-```xml
-**To this:**
-```xml
-<entry key='teltonika.port'>5027</entry>
-```
 3. Rebuild/Reinstall the add-on.
 
 ## 🔨 Troubleshooting
