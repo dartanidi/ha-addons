@@ -33,12 +33,6 @@ After creating the database and user, go to the **MariaDB Web UI** (or use a MyS
 1. Open the MariaDB add-on web interface
 2. Navigate to the **Rights** section
 3. Grant permissions to user `traccar` on database `traccar`:
-```sql
-GRANT ALL PRIVILEGES ON traccar.* TO 'traccar'@'%';
-FLUSH PRIVILEGES;
-```
-
-> **Note:** The `@'%'` is mandatory because the Traccar container connects from a separate internal Docker IP, not localhost.
 
 **Restart the MariaDB add-on** after applying these changes.
 
