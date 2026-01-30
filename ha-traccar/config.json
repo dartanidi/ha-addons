@@ -1,7 +1,7 @@
 {
   "name": "Traccar server for Home Assistant",
   "version": "1.0.2",
-  "slug": "ha-traccar",
+  "slug": "traccar_gps",
   "description": "Traccar server add-on for Home Assistant (Docker Official).",
   "url": "https://github.com/dartanidi/ha-addons/tree/main/ha-traccar",
   "arch": [
