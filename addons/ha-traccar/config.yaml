@@ -26,4 +26,3 @@ schema:
   database_url: str
   database_user: str
   database_password: str
-image: "traccar/traccar:alpine"
