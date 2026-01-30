@@ -16,8 +16,9 @@ if [ ! -f "$USER_XML" ]; then
     cp "$TEMPLATE_XML" "$USER_XML"
 fi
 
-# Leggi credenziali
+# Leggi credenziali e configurazioni
 if [ -f "$OPTIONS_PATH" ]; then
+    export WEB_PORT=$(jq -r '.web_port // 8082' $OPTIONS_PATH)
     export DB_DRIVER=$(jq -r '.database_driver // empty' $OPTIONS_PATH)
     export DB_USER=$(jq -r '.database_user // empty' $OPTIONS_PATH)
     export DB_PASSWORD=$(jq -r '.database_password // empty' $OPTIONS_PATH)
@@ -34,7 +35,7 @@ if [ ! -f "$JAVA_BIN" ]; then
     JAVA_BIN="java"
 fi
 
-echo "Starting Traccar on port 8082..."
+echo "Starting Traccar on port $WEB_PORT..."
 
 cd /opt/traccar
 
