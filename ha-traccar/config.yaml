@@ -20,7 +20,7 @@ options:
   database_driver: "com.mysql.cj.jdbc.Driver"
   database_url: "jdbc:mysql://core-mariadb:3306/traccar?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC&allowMultiQueries=true&autoReconnect=true"
   database_user: "traccar"
-  database_password: "cambiami_con_password_db"
+  database_password: "your_db_password"
 schema:
   web_port: port
   database_driver: str
