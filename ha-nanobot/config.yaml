@@ -1,6 +1,6 @@
 name: "Nanobot AI"
 description: "Ultra-Lightweight AI Agent (Gateway Mode). Supports local MCP and RAG."
-version: "0.1.5"
+version: "0.1.6"
 slug: "nanobot"
 arch:
   - aarch64
@@ -9,11 +9,12 @@ init: false
 map:
   - config:rw
   - share:rw
+# Questa sezione abilita il pannello "Rete" nell'Add-on
 ports:
   18790/tcp: 18790
 options:
   provider: "openrouter"
-  api_key: "sk-..."
+  api_key: ""
   model: "anthropic/claude-3-5-sonnet"
   api_base: ""
   restrict_to_workspace: true
@@ -21,7 +22,7 @@ options:
   additional_config_json: "{}"
 schema:
   provider: list(openrouter, openai, anthropic, groq, deepseek, gemini, minimax, vllm, custom)
-  api_key: password
+  api_key: str
   model: str
   api_base: str?
   restrict_to_workspace: bool
