@@ -1,6 +1,6 @@
 name: "Nanobot AI"
 description: "Ultra-Lightweight AI Agent (Gateway Mode). Supports MCP and local RAG."
-version: "0.1.7"
+version: "0.1.8"
 slug: "nanobot"
 arch:
   - aarch64
