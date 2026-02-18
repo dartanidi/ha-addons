@@ -61,7 +61,7 @@ Paste this into the `additional_config_json` field to allow the agent to use fil
     }
   }
 }
-
+```
 ## 📡 Networking
 
 The add-on exposes the **Nanobot Gateway** API.
