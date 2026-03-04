@@ -1,6 +1,6 @@
 name: "StreamViX"
 version: "1.0.0"
-slug: "streamvix"
+slug: "ha-streamvix"    <--- ECCO LA CORREZIONE IMPORTANTE
 description: "Un addon per Stremio che estrae sorgenti streaming per film, serie TV, anime, TV live ed Eventi Sportivi."
 arch:
   - aarch64
