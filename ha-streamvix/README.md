@@ -6,13 +6,14 @@ StreamViX è un potente add-on per Stremio che estrae sorgenti streaming per fil
 
 ## 🚀 Installazione
 
-Essendo un add-on locale personalizzato, l'installazione avviene in pochi passaggi:
+Puoi installare questo add-on aggiungendo il repository personalizzato al tuo Home Assistant:
 
-1. Copia la cartella `streamvix` (contenente `config.yaml`, `Dockerfile`, `run.sh` e questo `README.md`) nella directory `/addons/` del tuo Home Assistant.
-2. Vai su **Impostazioni** > **Componenti aggiuntivi** > **Negozio dei componenti aggiuntivi**.
-3. Clicca sui tre puntini in alto a destra e seleziona **Controlla aggiornamenti**.
-4. Scorri fino in fondo: troverai la sezione "Componenti aggiuntivi locali" con **StreamViX Add-on**.
-5. Clicca su **Installa**. *(Nota: la prima installazione può richiedere diversi minuti poiché scaricherà l'ambiente Node/Python e clonerà l'ultima versione del codice da GitHub).*
+1. Vai in **Impostazioni** > **Componenti aggiuntivi** > **Negozio dei componenti aggiuntivi** (in basso a destra).
+2. Clicca sui tre puntini in alto a destra e seleziona **Repository**.
+3. Incolla l'URL del repository: `https://github.com/dartanidi/ha-addons` e clicca su **Aggiungi**.
+4. Chiudi la finestra dei repository e ricarica la pagina (o clicca su **Controlla aggiornamenti** sempre dal menu a tendina in alto a destra).
+5. Scorri la pagina fino a trovare la sezione dedicata al repository appena aggiunto e clicca su **StreamViX Add-on** (oppure cercalo tramite la barra di ricerca).
+6. Clicca su **Installa**. *(Nota: l'installazione scaricherà l'ambiente Node/Python e clonerà l'ultima versione del codice originale da GitHub, quindi potrebbe richiedere alcuni minuti).*
 
 ## ⚙️ Configurazione
 
@@ -52,5 +53,5 @@ Assicurati di salvare.
 
 ## 🔄 Aggiornamenti
 
-Il `Dockerfile` di questo add-on è impostato per clonare automaticamente l'ultimo commit dal repository ufficiale di StreamViX. 
-Se in futuro esce un aggiornamento importante di StreamViX, ti basterà andare nella pagina dell'add-on in Home Assistant e cliccare su **Ricostruisci** per scaricare e compilare l'ultima versione.
+Quando usciranno nuove versioni nel repository `ha-addons`, Home Assistant ti notificherà l'aggiornamento. 
+Inoltre, poiché il `Dockerfile` clona direttamente l'ultima versione dal repository ufficiale di StreamViX, se hai bisogno di forzare l'aggiornamento del codice interno senza aspettare un bump di versione su HA, puoi semplicemente cliccare su **Ricostruisci** nella pagina dell'add-on.
