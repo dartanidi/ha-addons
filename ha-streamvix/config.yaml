@@ -1,23 +1,23 @@
 name: "StreamViX"
-description: "Un addon per Stremio che estrae sorgenti streaming per film, serie TV, anime, TV live ed Eventi Sportivi."
 version: "1.0.0"
-init: false
+slug: "streamvix"
+description: "Un addon per Stremio che estrae sorgenti streaming per film, serie TV, anime, TV live ed Eventi Sportivi."
 arch:
   - aarch64
   - amd64
   - armv7
 startup: application
 boot: auto
-ports:
-  7860/tcp: 7860
+host_network: true
 options:
+  port: 7860
   mfp_url: ""
   mfp_password: ""
   tmdb_api_key: ""
+  addon_base_url: ""
   animeunity_enabled: true
   animesaturn_enabled: true
   enable_live_tv: true
-  addon_base_url: ""
   streamed_enable: true
   rbtv_enable: true
   spso_enable: true
@@ -26,13 +26,14 @@ options:
   fast_dynamic: false
   dynamic_extractor_conc: 10
 schema:
+  port: "port"
   mfp_url: "str?"
   mfp_password: "password?"
   tmdb_api_key: "str?"
+  addon_base_url: "str?"
   animeunity_enabled: "bool"
   animesaturn_enabled: "bool"
   enable_live_tv: "bool"
-  addon_base_url: "str?"
   streamed_enable: "bool"
   rbtv_enable: "bool"
   spso_enable: "bool"
@@ -40,3 +41,6 @@ schema:
   tvtap_enable: "bool"
   fast_dynamic: "bool"
   dynamic_extractor_conc: "int"
+map:
+  - "config:rw"
+init: false
