@@ -1,40 +1,44 @@
-FROM node:20-slim
+ARG BUILD_FROM=ghcr.io/hassio-addons/debian-base:9.2.0
+FROM $BUILD_FROM
 
-# Installa python3, pip, dipendenze per compilazione, git e jq
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip python3-dev \
-    build-essential ca-certificates \
-    tesseract-ocr tesseract-ocr-ita tesseract-ocr-eng \
-    libtesseract-dev libleptonica-dev \
-    git jq \
+# Aggiunge il repository per Node.js 20 e installa tutte le dipendenze di sistema
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-venv \
+    python3-pip \
+    python3-dev \
+    build-essential \
+    git \
+    jq \
+    nodejs \
+    tesseract-ocr \
+    tesseract-ocr-ita \
+    tesseract-ocr-eng \
+    libtesseract-dev \
+    libleptonica-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN ln -s /usr/bin/python3 /usr/bin/python
+# Crea un virtual environment per Python e lo aggiunge al PATH in modo che Node usi questo
+ENV PATH="/opt/venv/bin:$PATH"
+RUN python3 -m venv /opt/venv \
+    && pip install --no-cache-dir requests beautifulsoup4 pycryptodome pyDes pillow pytesseract curl_cffi fake-headers lxml
 
-WORKDIR /usr/src/app
+# Imposta la directory di lavoro
+WORKDIR /opt/streamvix
 
-# Clona direttamente l'ultimo commit del repository ufficiale
-# (Se in futuro vuoi aggiornare l'add-on, ti basterà fare "Ricostruisci" da HA)
-RUN git clone https://github.com/qwertyuiop8899/StreamViX.git .
+# Clona il repository e compila l'applicazione TypeScript
+RUN git clone https://github.com/qwertyuiop8899/StreamViX.git . \
+    && npm install -g pnpm@8.15.5 \
+    && pnpm install --prod=false \
+    && pnpm add undici@6.19.8 \
+    && pnpm run build
 
-# Installa le dipendenze Python
-RUN pip3 install --no-cache-dir --break-system-packages \
-    requests beautifulsoup4 pycryptodome pyDes \
-    pillow pytesseract curl_cffi fake-headers lxml
-
-# Installa pnpm e compila il progetto TS
-RUN npm install -g pnpm@8.15.5
-RUN rm -rf node_modules .pnpm-store dist 2>/dev/null || true
-RUN pnpm install --prod=false
-RUN pnpm add undici@6.19.8
-RUN pnpm run build
-
-# Imposta le variabili d'ambiente globali per Python
-ENV PYTHONPATH=/usr/local/lib/python3.11/dist-packages:/usr/lib/python3.11/dist-packages
-ENV PATH="/usr/local/bin:/usr/bin:$PATH"
-
-# Copia lo script di avvio di HA all'interno dell'immagine e dai i permessi
+# Copia lo script di avvio
 COPY run.sh /run.sh
 RUN chmod a+x /run.sh
 
-ENTRYPOINT ["/run.sh"]
+EXPOSE 7860
+
+CMD [ "/run.sh" ]
