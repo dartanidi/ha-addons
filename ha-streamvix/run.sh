@@ -29,7 +29,6 @@ export PD_ENABLE=$(bool_to_binary $(jq --raw-output '.pd_enable' $CONFIG_PATH))
 export TVTAP_ENABLE=$(bool_to_binary $(jq --raw-output '.tvtap_enable' $CONFIG_PATH))
 export FAST_DYNAMIC=$(bool_to_binary $(jq --raw-output '.fast_dynamic' $CONFIG_PATH))
 
-# Configurazione fissa richiesta dal codice
 export BOTHLINK="true"
 
 echo "=== Riepilogo Configurazioni Backend ==="
@@ -40,5 +39,5 @@ echo "Altro -> TVTAP: $TVTAP_ENABLE | FAST_DYNAMIC: $FAST_DYNAMIC (Cap: $DYNAMIC
 echo "========================================"
 
 echo "Avvio di StreamViX..."
-cd /usr/src/app
+cd /opt/streamvix
 exec node dist/addon.js
