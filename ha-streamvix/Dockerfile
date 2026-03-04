@@ -1,18 +1,15 @@
-ARG BUILD_FROM=ghcr.io/hassio-addons/debian-base:9.2.0
-FROM $BUILD_FROM
+FROM node:20-slim
 
-# Aggiunge il repository per Node.js 20 e installa tutte le dipendenze di sistema
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y --no-install-recommends \
+# Installiamo Python, git, jq e le librerie necessarie (node:20-slim è Debian, quindi apt-get funziona perfettamente)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-venv \
     python3-pip \
     python3-dev \
     build-essential \
+    ca-certificates \
     git \
     jq \
-    nodejs \
     tesseract-ocr \
     tesseract-ocr-ita \
     tesseract-ocr-eng \
@@ -20,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
     libleptonica-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Crea un virtual environment per Python e lo aggiunge al PATH in modo che Node usi questo
+# Creiamo un virtual environment per Python per evitare errori con pip
 ENV PATH="/opt/venv/bin:$PATH"
 RUN python3 -m venv /opt/venv \
     && pip install --no-cache-dir requests beautifulsoup4 pycryptodome pyDes pillow pytesseract curl_cffi fake-headers lxml
