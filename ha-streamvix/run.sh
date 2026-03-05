@@ -6,15 +6,21 @@ CONFIG_PATH=/data/options.json
 echo "Lettura configurazione da Home Assistant..."
 
 # Configurazione Rete
-export PORT=$(jq --raw-output '.port' $CONFIG_PATH)
+export PORT="$(jq --raw-output '.port' $CONFIG_PATH)"
 
-# Parametri base
-export MFP_URL=$(jq --raw-output '.mfp_url // empty' $CONFIG_PATH)
-export MFP_PASSWORD=$(jq --raw-output '.mfp_password // empty' $CONFIG_PATH)
-export MFP_PSW=$MFP_PASSWORD
-export TMDB_API_KEY=$(jq --raw-output '.tmdb_api_key // empty' $CONFIG_PATH)
-export ADDON_BASE_URL=$(jq --raw-output '.addon_base_url // empty' $CONFIG_PATH)
-export DYNAMIC_EXTRACTOR_CONC=$(jq --raw-output '.dynamic_extractor_conc' $CONFIG_PATH)
+# Parametri base (protetti con virgolette per i caratteri speciali)
+export MFP_URL="$(jq --raw-output '.mfp_url // empty' $CONFIG_PATH)"
+export MFP_PASSWORD="$(jq --raw-output '.mfp_password // empty' $CONFIG_PATH)"
+export MFP_PSW="$MFP_PASSWORD"
+export TMDB_API_KEY="$(jq --raw-output '.tmdb_api_key // empty' $CONFIG_PATH)"
+export ADDON_BASE_URL="$(jq --raw-output '.addon_base_url // empty' $CONFIG_PATH)"
+export DYNAMIC_EXTRACTOR_CONC="$(jq --raw-output '.dynamic_extractor_conc' $CONFIG_PATH)"
+
+# URL Liste Private (I nuovi 4 parametri)
+export RM_SOURCE_URL="$(jq --raw-output '.rm_source_url // empty' $CONFIG_PATH)"
+export RM_SOURCE_URL_H="$(jq --raw-output '.rm_source_url_h // empty' $CONFIG_PATH)"
+export ZSKY_ENV_URL="$(jq --raw-output '.zsky_env_url // empty' $CONFIG_PATH)"
+export PSKY_ENV_URL="$(jq --raw-output '.psky_env_url // empty' $CONFIG_PATH)"
 
 # Funzione per convertire il booleano di HA in 1/0 per StreamViX
 bool_to_binary() {
@@ -60,10 +66,11 @@ fi
 echo "=== Riepilogo Configurazioni Backend ==="
 echo "Porta in ascolto: $PORT (Host Network)"
 echo "MediaFlow Proxy: $(if [ -n "$MFP_URL" ]; then echo "CONFIGURATO"; else echo "NON CONFIGURATO"; fi)"
-echo "Base URL: ${ADDON_BASE_URL:-"Non impostato (Usa fallback)"}"
+echo "Moduli Esterni -> RM: $(if [ -n "$RM_SOURCE_URL" ]; then echo "ON"; else echo "OFF"; fi) | ZSKY: $(if [ -n "$ZSKY_ENV_URL" ]; then echo "ON"; else echo "OFF"; fi) | PSKY: $(if [ -n "$PSKY_ENV_URL" ]; then echo "ON"; else echo "OFF"; fi)"
 echo "Eventi Sportivi -> STREAMED: $STREAMED_ENABLE | RBTV: $RBTV_ENABLE | SPSO: $SPSO_ENABLE | PD: $PD_ENABLE"
-echo "Altro -> TVTAP: $TVTAP_ENABLE | FAST_DYNAMIC: $FAST_DYNAMIC (Cap: $DYNAMIC_EXTRACTOR_CONC)"
 echo "========================================"
 
 echo "Avvio di StreamViX..."
+# Fix per l'errore ModuleNotFoundError in Live.py
+export PYTHONPATH=$PYTHONPATH:/opt/streamvix
 exec node dist/addon.js
