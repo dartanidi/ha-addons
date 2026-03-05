@@ -1,5 +1,5 @@
 name: "StreamViX"
-version: "1.1.0"
+version: "1.1.1"
 slug: "ha-streamvix"
 description: "Addon per Stremio (Film, Serie, Anime, Sport)"
 arch:
@@ -28,7 +28,13 @@ options:
   tvtap_enable: false
   fast_dynamic: false
   dynamic_extractor_conc: 10
-  use_full_channel_list: false     # <--- NUOVA OPZIONE
+  use_full_channel_list: false
+  ppv_enable: false
+  disable_live_events: false
+  rm_source_url: ""
+  rm_source_url_h: ""
+  zsky_env_url: ""
+  psky_env_url: ""
 schema:
   port: port
   mfp_url: str
@@ -45,4 +51,10 @@ schema:
   tvtap_enable: bool
   fast_dynamic: bool
   dynamic_extractor_conc: int
-  use_full_channel_list: bool      # <--- NUOVO SCHEMA
+  use_full_channel_list: bool
+  ppv_enable: bool
+  disable_live_events: bool
+  rm_source_url: str
+  rm_source_url_h: str
+  zsky_env_url: str
+  psky_env_url: str
