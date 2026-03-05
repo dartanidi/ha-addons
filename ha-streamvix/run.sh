@@ -5,7 +5,7 @@ CONFIG_PATH=/data/options.json
 
 echo "Lettura configurazione da Home Assistant..."
 
-# Configurazione Rete (stile EasyProxy)
+# Configurazione Rete
 export PORT=$(jq --raw-output '.port' $CONFIG_PATH)
 
 # Parametri base
@@ -25,6 +25,8 @@ bool_to_binary() {
 export ANIMEUNITY_ENABLED=$(jq --raw-output '.animeunity_enabled' $CONFIG_PATH)
 export ANIMESATURN_ENABLED=$(jq --raw-output '.animesaturn_enabled' $CONFIG_PATH)
 export Enable_Live_TV=$(jq --raw-output '.enable_live_tv' $CONFIG_PATH)
+export PPV_ENABLE=$(bool_to_binary $(jq --raw-output '.ppv_enable' $CONFIG_PATH))
+export DISABLE_LIVE_EVENTS=$(bool_to_binary $(jq --raw-output '.disable_live_events' $CONFIG_PATH))
 
 # Parametri avanzati sport ed estrazioni
 export STREAMED_ENABLE=$(bool_to_binary $(jq --raw-output '.streamed_enable' $CONFIG_PATH))
@@ -36,6 +38,25 @@ export FAST_DYNAMIC=$(bool_to_binary $(jq --raw-output '.fast_dynamic' $CONFIG_P
 
 export BOTHLINK="true"
 
+cd /opt/streamvix
+
+echo "=== Gestione Lista Canali TV ==="
+USE_FULL_CHANNEL_LIST=$(jq --raw-output '.use_full_channel_list' $CONFIG_PATH)
+
+# Creiamo un backup del file originale base per sicurezza
+if [ ! -f "config/tv_channels.json.original" ]; then
+    cp config/tv_channels.json config/tv_channels.json.original
+fi
+
+# Selezioniamo quale file usare in base alla spunta di HA
+if [ "$USE_FULL_CHANNEL_LIST" == "true" ]; then
+    echo "-> Applico la lista completa dei canali (tv_channels.json.bk)"
+    cp config/tv_channels.json.bk config/tv_channels.json
+else
+    echo "-> Utilizzo la lista canali standard/essenziale"
+    cp config/tv_channels.json.original config/tv_channels.json
+fi
+
 echo "=== Riepilogo Configurazioni Backend ==="
 echo "Porta in ascolto: $PORT (Host Network)"
 echo "MediaFlow Proxy: $(if [ -n "$MFP_URL" ]; then echo "CONFIGURATO"; else echo "NON CONFIGURATO"; fi)"
@@ -45,5 +66,4 @@ echo "Altro -> TVTAP: $TVTAP_ENABLE | FAST_DYNAMIC: $FAST_DYNAMIC (Cap: $DYNAMIC
 echo "========================================"
 
 echo "Avvio di StreamViX..."
-cd /opt/streamvix
 exec node dist/addon.js
