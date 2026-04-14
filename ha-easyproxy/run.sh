@@ -1,38 +1,46 @@
-#!/usr/bin/with-contenv bashio
+#!/bin/bash
 
-echo "Avvio EasyProxy Add-on ..."
+echo "[INFO] Avvio EasyProxy Add-on ..."
 
-# 1. Recupero configurazioni da Home Assistant
-GLOBAL=$(bashio::config 'global_proxy')
-ROUTES=$(bashio::config 'transport_routes')
-MPD=$(bashio::config 'mpd_mode')
-USER_PORT=$(bashio::config 'port')
-USER_PASS=$(bashio::config 'password')
+CONFIG_PATH="/data/options.json"
+
+# Verifica che il file di configurazione esista
+if [ ! -f "$CONFIG_PATH" ]; then
+    echo "[ERRORE] File di configurazione non trovato in $CONFIG_PATH!"
+    exit 1
+fi
+
+# 1. Recupero configurazioni da Home Assistant usando jq
+GLOBAL=$(jq -r '.global_proxy // empty' $CONFIG_PATH)
+ROUTES=$(jq -r '.transport_routes // empty' $CONFIG_PATH)
+MPD=$(jq -r '.mpd_mode // empty' $CONFIG_PATH)
+USER_PORT=$(jq -r '.port // 7860' $CONFIG_PATH)
+USER_PASS=$(jq -r '.password // empty' $CONFIG_PATH)
 
 # 2. Export Variabili d'Ambiente
 
 # Global Proxy
-if bashio::config.has_value 'global_proxy'; then
+if [ -n "$GLOBAL" ]; then
     export GLOBAL_PROXY="$GLOBAL"
-    bashio::log.info "Global Proxy configurato."
+    echo "[INFO] Global Proxy configurato."
 fi
 
-# Transport Routes (Nuovo sistema routing)
-if bashio::config.has_value 'transport_routes'; then
+# Transport Routes
+if [ -n "$ROUTES" ]; then
     export TRANSPORT_ROUTES="$ROUTES"
-    bashio::log.info "Transport Routes configurati."
+    echo "[INFO] Transport Routes configurati."
 fi
 
-# MPD Mode (legacy o ffmpeg)
+# MPD Mode
 export MPD_MODE="$MPD"
-bashio::log.info "Modalità MPD impostata su: $MPD"
+echo "[INFO] Modalità MPD impostata su: $MPD"
 
-# Gestione Password (API_PASSWORD)
-if bashio::config.has_value 'password'; then
+# Gestione Password
+if [ -n "$USER_PASS" ]; then
     export API_PASSWORD="$USER_PASS"
-    bashio::log.info "Protezione Password ATTIVA."
+    echo "[INFO] Protezione Password ATTIVA."
 else
-    bashio::log.info "Nessuna password impostata. Accesso libero."
+    echo "[INFO] Nessuna password impostata. Accesso libero."
 fi
 
 # Impostiamo la porta
@@ -40,9 +48,9 @@ export PORT="$USER_PORT"
 
 # Spostamento nella cartella
 cd /app
-bashio::log.info "Avvio del server Gunicorn sulla porta $USER_PORT..."
+echo "[INFO] Avvio del server Gunicorn sulla porta $USER_PORT..."
 
-# 3. Avvio (Aggiornato con parametri timeout dal repo originale)
+# 3. Avvio
 exec gunicorn --bind 0.0.0.0:"$USER_PORT" \
     --workers 4 \
     --worker-class aiohttp.worker.GunicornWebWorker \
