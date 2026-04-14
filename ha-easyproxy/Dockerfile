@@ -1,33 +1,34 @@
-ARG BUILD_FROM
-FROM $BUILD_FROM
+FROM debian:bookworm-slim
 
-# Installazione dipendenze di sistema
-RUN apk add --no-cache \
+# Installazione dipendenze di sistema (aggiunto 'jq' per leggere le config)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
+    jq \
     python3 \
-    py3-pip \
-    py3-setuptools \
-    py3-wheel \
-    gcc \
-    musl-dev \
+    python3-pip \
+    python3-setuptools \
+    python3-wheel \
     python3-dev \
+    gcc \
     libffi-dev \
-    openssl-dev \
-    ffmpeg
+    libssl-dev \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 # Imposta la cartella di lavoro
 WORKDIR /app
 
-# --- TRUCCO ANTI-CACHE ---
-# Questa riga interroga GitHub per vedere qual è l'ultimo commit sul branch principale.
-# Se il commit cambia, la cache di Docker si invalida da questo punto in poi, 
-# costringendolo a fare un nuovo git clone e una nuova installazione di pip.
+# Trucco anti-cache per forzare l'aggiornamento da GitHub
 ADD "https://api.github.com/repos/realbestia1/EasyProxy/commits/main" /tmp/skipcache
+
 # Clona il repository
 RUN git clone https://github.com/realbestia1/EasyProxy.git .
 
 # Installa le dipendenze Python del progetto
-RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
+
+# ATTENZIONE: Se l'app necessita di Playwright completo, scommenta questa riga:
+# RUN playwright install chromium --with-deps
 
 # Copia lo script di avvio locale
 COPY run.sh /
