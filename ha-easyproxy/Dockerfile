@@ -18,11 +18,16 @@ RUN apk add --no-cache \
 # Imposta la cartella di lavoro
 WORKDIR /app
 
+# --- TRUCCO ANTI-CACHE ---
+# Questa riga interroga GitHub per vedere qual è l'ultimo commit sul branch principale.
+# Se il commit cambia, la cache di Docker si invalida da questo punto in poi, 
+# costringendolo a fare un nuovo git clone e una nuova installazione di pip.
+ADD "https://api.github.com/repos/realbestia1/EasyProxy/commits/main" skipcache
+
 # Clona il repository
 RUN git clone https://github.com/realbestia1/EasyProxy.git .
 
 # Installa le dipendenze Python del progetto
-# Manteniamo il break-system-packages per compatibilità con Alpine recente
 RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Copia lo script di avvio locale
