@@ -59,4 +59,4 @@ echo "[INFO] Avvio del server nativo tramite Xvfb (necessario per Playwright)...
 # 3. Avvio tramite xvfb-run
 # Questo comando crea un display virtuale in memoria, essenziale per i provider 
 # che richiedono Chromium (come DLStreams) per evitare crash immediati.
-exec xvfb-run -a --server-args='-screen 0 1366x768x24' python3 app.py
+exec xvfb-run -a -e /dev/stdout python3 -u app.py
