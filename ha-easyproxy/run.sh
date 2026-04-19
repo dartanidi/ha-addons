@@ -62,10 +62,16 @@ export PORT=7860
 cd /app
 echo "[INFO] Avvio di Gunicorn tramite Xvfb sulla porta interna fissa 7860 con $USER_WORKERS workers..."
 
-# 3. Avvio tramite Xvfb (necessario per Playwright/Chromium in background)
-exec xvfb-run -a --server-args='-screen 0 1366x768x24' gunicorn --bind 0.0.0.0:7860 \
-    --workers "$USER_WORKERS" \
+# 3. Avvio tramite Xvfb (Modalità DEBUG Estremo)
+echo "[INFO] Esecuzione di Gunicorn in modalità DEBUG..."
+
+exec xvfb-run -a -e /dev/stderr --server-args='-screen 0 1366x768x24' \
+    gunicorn --bind 0.0.0.0:7860 \
+    --workers 1 \
     --worker-class aiohttp.worker.GunicornWebWorker \
+    --log-level debug \
+    --error-logfile - \
+    --access-logfile - \
+    --capture-output \
     --timeout 120 \
-    --graceful-timeout 120 \
     app:app
