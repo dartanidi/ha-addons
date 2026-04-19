@@ -1,5 +1,5 @@
 name: "EasyProxy Light"
-version: "2.0.0"
+version: "2.0.1"
 slug: "easyproxy"
 description: "Server Proxy Universale HLS con supporto FFmpeg. Versione Light (senza DVR e bypass Cloudflare avanzati)."
 arch:
@@ -8,7 +8,8 @@ arch:
   - armv7
 startup: application
 boot: auto
-host_network: true
+ports:
+  7860/tcp: 7860
 options:
   global_proxy: ""
   transport_routes: ""
