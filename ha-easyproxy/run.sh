@@ -1,28 +1,34 @@
 #!/bin/bash
-echo "[DEBUG] ========================================"
-echo "[DEBUG] INIZIO DIAGNOSTICA EASYPROXY"
-echo "[DEBUG] ========================================"
 
-cd /app
+echo "[INFO] Avvio EasyProxy Add-on (Versione Light) ..."
 
-echo "[DEBUG] 1. Controllo versione Python:"
-python3 --version
+CONFIG_PATH="/data/options.json"
 
-echo "[DEBUG] 2. Controllo dipendenze (pip list):"
-pip list | grep -E "gunicorn|aiohttp|playwright"
+if [ ! -f "$CONFIG_PATH" ]; then
+    echo "[ERRORE] File di configurazione non trovato in $CONFIG_PATH!"
+    exit 1
+fi
 
-echo "[DEBUG] 3. Controllo presenza eseguibili:"
-echo "Gunicorn si trova in: $(which gunicorn || echo 'NON TROVATO')"
-echo "Xvfb-run si trova in: $(which xvfb-run || echo 'NON TROVATO')"
+# 1. Recupero configurazioni (ignoriamo i workers, non servono più)
+GLOBAL=$(jq -r '.global_proxy // empty' $CONFIG_PATH)
+ROUTES=$(jq -r '.transport_routes // empty' $CONFIG_PATH)
+MPD=$(jq -r '.mpd_mode // "legacy"' $CONFIG_PATH)
+USER_PASS=$(jq -r '.password // empty' $CONFIG_PATH)
+USER_LOG=$(jq -r '.log_level // "WARNING"' $CONFIG_PATH)
 
-echo "[DEBUG] ========================================"
-echo "[DEBUG] 4. TENTATIVO DI AVVIO DIRETTO (Senza Xvfb e Gunicorn)"
-echo "[DEBUG] ========================================"
+# 2. Export Variabili d'Ambiente
+if [ -n "$GLOBAL" ]; then export GLOBAL_PROXY="$GLOBAL"; fi
+if [ -n "$ROUTES" ]; then export TRANSPORT_ROUTES="$ROUTES"; fi
+if [ -n "$USER_PASS" ]; then export API_PASSWORD="$USER_PASS"; fi
 
-# Impostiamo le variabili base per non farlo arrabbiare
-export PORT=7860
-export LOG_LEVEL="DEBUG"
+export MPD_MODE="$MPD"
+export LOG_LEVEL="$USER_LOG"
 export DVR_ENABLED="false"
+export PORT=7860
 
-# Avviamo brutalmente il file python
-python3 app.py
+# Spostamento nella cartella app
+cd /app
+echo "[INFO] Avvio del server nativo AIOHTTP tramite Xvfb sulla porta 7860..."
+
+# 3. Avvio di app.py nativo con Xvfb (niente Gunicorn!)
+exec xvfb-run -a --server-args='-screen 0 1366x768x24' python3 app.py
