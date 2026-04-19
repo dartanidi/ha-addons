@@ -1,7 +1,7 @@
 name: "EasyProxy Light"
-version: "2.0.5"
+version: "2.0.6"
 slug: "easyproxy"
-description: "Server Proxy Universale HLS con supporto FFmpeg. Versione Light (senza DVR e bypass Cloudflare avanzati)."
+description: "Server Proxy Universale HLS con supporto FFmpeg. Versione Light."
 arch:
   - aarch64
   - amd64
@@ -9,23 +9,19 @@ arch:
 startup: application
 boot: auto
 ports:
-  7860/tcp: 7860
+  7860/tcp: 7860  # Esterna configurabile / Interna fissa
 options:
   global_proxy: ""
   transport_routes: ""
   mpd_mode: "legacy"
-  port: 7860
   password: ""
   log_level: "WARNING"
-  workers: 2
 schema:
   global_proxy: "str?"
   transport_routes: "str?"
   mpd_mode: "list(legacy|ffmpeg)"
-  port: port
   password: "password?"
   log_level: "list(DEBUG|INFO|WARNING|ERROR|CRITICAL)"
-  workers: "int(1,10)"
 map:
   - "config:rw"
 init: false
