@@ -1,7 +1,7 @@
 name: "EasyProxy Light"
-version: "2.1.0"
+version: "2.1.1"
 slug: "easyproxy"
-description: "Server Proxy Universale HLS (Versione Light). Porta fissa 7860."
+description: "Server Proxy Universale HLS (Versione Light). Modalità Rete Host."
 arch:
   - aarch64
   - amd64
@@ -10,25 +10,21 @@ arch:
   - i386
 startup: application
 boot: auto
-ports:
-  7860/tcp: 7860
-webui: "http://[HOST]:[PORT:7860]"
+host_network: true
 options:
+  port: 7860
   global_proxy: ""
   transport_routes: ""
   mpd_mode: "legacy"
   password: ""
   log_level: "WARNING"
-  port: 7860
-  workers: 2
 schema:
+  port: "port"
   global_proxy: "str?"
   transport_routes: "str?"
   mpd_mode: "list(legacy|ffmpeg)"
   password: "password?"
   log_level: "list(DEBUG|INFO|WARNING|ERROR|CRITICAL)"
-  port: "port"
-  workers: "int(1,10)"
 map:
   - "config:rw"
 init: false
