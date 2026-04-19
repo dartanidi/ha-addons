@@ -1,5 +1,5 @@
 name: "EasyProxy Light"
-version: "2.0.1"
+version: "2.0.2"
 slug: "easyproxy"
 description: "Server Proxy Universale HLS con supporto FFmpeg. Versione Light (senza DVR e bypass Cloudflare avanzati)."
 arch:
