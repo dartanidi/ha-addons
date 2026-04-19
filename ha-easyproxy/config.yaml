@@ -1,5 +1,5 @@
 name: "EasyProxy Light"
-version: "2.0.7"
+version: "2.1.0"
 slug: "easyproxy"
 description: "Server Proxy Universale HLS con supporto FFmpeg. Versione Light."
 arch:
@@ -9,7 +9,8 @@ arch:
 startup: application
 boot: auto
 ports:
-  7860/tcp: 7860  # Esterna configurabile / Interna fissa
+  7860/tcp: 7860
+webui: "http://[HOST]:7860"
 options:
   global_proxy: ""
   transport_routes: ""
