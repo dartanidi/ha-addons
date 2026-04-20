@@ -6,7 +6,6 @@ CONFIG_PATH="/data/options.json"
 export PORT=$(jq -r '.port // 7860' $CONFIG_PATH)
 export GLOBAL_PROXY=$(jq -r '.global_proxy // empty' $CONFIG_PATH)
 export TRANSPORT_ROUTES=$(jq -r '.transport_routes // empty' $CONFIG_PATH)
-export MPD_MODE=$(jq -r '.mpd_mode // "legacy"' $CONFIG_PATH)
 export API_PASSWORD=$(jq -r '.password // empty' $CONFIG_PATH)
 export LOG_LEVEL=$(jq -r '.log_level // "WARNING"' $CONFIG_PATH)
 export DVR_ENABLED="false"
