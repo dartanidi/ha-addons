@@ -4,13 +4,14 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
 ENV PYTHONUNBUFFERED=1
 
-# Dipendenze di sistema SENZA chromium (lo installerà playwright)
+# Dipendenze: Abbiamo unito quelle del maintainer con i tool vitali per HA (jq, git, xvfb, xauth)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     git \
-    ffmpeg \
     xvfb \
     xauth \
+    ffmpeg \
+    chromium \
     libnss3 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
@@ -34,13 +35,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Invalidazione cache
+# Invalidazione cache per forzare il download dell'ultimo codice GitHub a ogni build
 ADD "https://api.github.com/repos/realbestia1/EasyProxy/commits/main" /tmp/skipcache
 
 RUN git clone https://github.com/realbestia1/EasyProxy.git .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN python -m playwright install chromium
 
+# Copiamo ed eseguiamo il nostro gestore personalizzato invece di Gunicorn
 COPY run.sh /
 RUN chmod a+x /run.sh
 
