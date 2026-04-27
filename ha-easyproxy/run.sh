@@ -1,31 +1,41 @@
 #!/bin/bash
-echo "[INFO] Avvio EasyProxy Add-on (Versione Light - Rete Host) ..."
+CONFIG_PATH=/data/options.json
 
-CONFIG_PATH="/data/options.json"
+echo "[INFO] Avvio EasyProxy Light (Versione 64-bit Only)"
 
+# Estrazione variabili base
 export PORT=$(jq -r '.port // 7860' $CONFIG_PATH)
-export GLOBAL_PROXY=$(jq -r '.global_proxy // empty' $CONFIG_PATH)
-export TRANSPORT_ROUTES=$(jq -r '.transport_routes // empty' $CONFIG_PATH)
-export API_PASSWORD=$(jq -r '.password // empty' $CONFIG_PATH)
 export LOG_LEVEL=$(jq -r '.log_level // "WARNING"' $CONFIG_PATH)
-export DVR_ENABLED="false"
 
-cd /app
+# Gestione API Password
+API_PWD=$(jq -r '.api_password // empty' $CONFIG_PATH)
+if [ -n "$API_PWD" ]; then
+    export API_PASSWORD="$API_PWD"
+fi
 
-echo "[INFO] Creazione display virtuale Xvfb in background..."
-rm -f /tmp/.X99-lock
-Xvfb :99 -screen 0 1366x768x24 -nolisten tcp &
-export DISPLAY=:99
+# Gestione Proxy Globale
+G_PROXY=$(jq -r '.global_proxy // empty' $CONFIG_PATH)
+if [ -n "$G_PROXY" ]; then
+    export GLOBAL_PROXY="$G_PROXY"
+fi
 
-# Pausa per far inizializzare Xvfb
-sleep 2
+# Gestione Transport Routes
+T_ROUTES=$(jq -r '.transport_routes // empty' $CONFIG_PATH)
+if [ -n "$T_ROUTES" ]; then
+    export TRANSPORT_ROUTES="$T_ROUTES"
+fi
 
-echo "[INFO] Avvio del server nativo AIOHTTP sulla porta $PORT..."
+# Gestione FlareSolverr Esterno
+FS_URL=$(jq -r '.flaresolverr_url // empty' $CONFIG_PATH)
+if [ -n "$FS_URL" ]; then
+    export FLARESOLVERR_URL="$FS_URL"
+    export FLARESOLVERR_TIMEOUT=$(jq -r '.flaresolverr_timeout // 60' $CONFIG_PATH)
+    echo "[INFO] FlareSolverr esterno collegato a: $FS_URL"
+fi
 
-# Avvio di Python senza 'exec' per poter catturare l'exit code
-python3 -u app.py
+# Forzatura parametri di efficienza per Home Assistant
+export MPD_MODE="legacy"
+export WORKERS=1
 
-# Se arriviamo qui, l'app si è chiusa
-EXIT_CODE=$?
-echo "[ERROR] app.py terminato inaspettatamente con codice $EXIT_CODE" >&2
-exit $EXIT_CODE
+echo "[INFO] 🚀 Avvio server sulla porta $PORT..."
+exec python3 -u app.py
