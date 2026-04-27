@@ -1,10 +1,12 @@
 FROM python:3.12-slim-bookworm
 
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
+# 1. Variabili d'ambiente per il browser di sistema
 ENV PYTHONUNBUFFERED=1
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV CHROME_BIN=/usr/bin/chromium
+ENV CHROME_PATH=/usr/bin/chromium
 
-# Dipendenze: Abbiamo unito quelle del maintainer con i tool vitali per HA (jq, git, xvfb, xauth)
+# 2. Installazione pacchetti (Solo 64-bit supportati)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     git \
@@ -12,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xauth \
     ffmpeg \
     chromium \
+    chromium-driver \
     libnss3 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
@@ -35,14 +38,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Invalidazione cache per forzare il download dell'ultimo codice GitHub a ogni build
+# 3. Download codice sorgente (Scarica sempre l'ultima versione)
 ADD "https://api.github.com/repos/realbestia1/EasyProxy/commits/main" /tmp/skipcache
-
 RUN git clone https://github.com/realbestia1/EasyProxy.git .
-RUN pip install --no-cache-dir -r requirements.txt
-RUN python -m playwright install chromium
 
-# Copiamo ed eseguiamo il nostro gestore personalizzato invece di Gunicorn
+# 4. Dipendenze Python
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 5. Script di avvio
 COPY run.sh /
 RUN chmod a+x /run.sh
 
