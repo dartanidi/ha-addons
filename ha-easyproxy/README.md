@@ -34,7 +34,7 @@ Nella scheda **Configurazione**, puoi personalizzare i seguenti parametri:
 | Parametro | Descrizione |
 | :--- | :--- |
 | `port` | Porta su cui risponderà il proxy (Default: `7860`). |
-| `api_password` | Password opzionale per proteggere i tuoi link streaming. |
+| `api_password` | Password opzionale per la protezione del proxy. |
 | `global_proxy` | Indirizzo di un proxy esterno per mascherare tutto il traffico. |
 | `transport_routes` | Regole di routing avanzate (es. `{URL=vavoo.to, PROXY=...}`). |
 | `log_level` | Livello di dettaglio dei log (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
