@@ -34,7 +34,7 @@ Nella scheda **Configurazione**, puoi personalizzare i seguenti parametri:
 | Parametro | Descrizione |
 | :--- | :--- |
 | `port` | Porta su cui risponderà il proxy (Default: `7860`). |
-| `api_password` | Password opzionale per la protezione del proxy. |
+| `api_password` | Password opzionale per proteggere l'accesso al proxy. |
 | `global_proxy` | Indirizzo di un proxy esterno per mascherare tutto il traffico. |
 | `transport_routes` | Regole di routing avanzate (es. `{URL=vavoo.to, PROXY=...}`). |
 | `log_level` | Livello di dettaglio dei log (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
@@ -69,6 +69,16 @@ Se hai impostato una `api_password`, aggiungila all'URL:
 
 Questo add-on richiede un'architettura a **64-bit**. 
 Verifica che il tuo sistema sia compatibile (`aarch64` o `x86_64`) prima dell'installazione. L'architettura `armv7` (32-bit) non è supportata.
+
+---
+
+## 🤝 Crediti e Progetto Originale
+
+Questo Add-on è un pacchetto (wrapper) ottimizzato per Home Assistant. 
+Tutto il "motore" proxy, la logica di estrazione e il codice Python originale sono stati sviluppati e sono mantenuti da **realbestia1**.
+
+Per supportare il suo fantastico lavoro, visita il repository ufficiale e lascia una ⭐:
+👉 **[Repository Originale di EasyProxy](https://github.com/realbestia1/EasyProxy)**
 
 ---
 *Manutenuto nel repository: https://github.com/dartanidi/ha-addons*
