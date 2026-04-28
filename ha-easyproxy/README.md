@@ -1,4 +1,4 @@
-# EasyProxy Light (64-bit Edition) - Home Assistant Add-on
+# EasyProxy Light (64-bit Edition) - Home Assistant App
 
 Versione ultra-leggera e ottimizzata del Server Proxy Universale HLS per Home Assistant. 
 
@@ -13,12 +13,23 @@ Questa versione è progettata specificamente per sistemi a **64-bit** (Raspberry
 
 ---
 
+## 🌍 Accesso Esterno
+
+Se si desidera garantire l'accesso esterno alla propria istanza di EasyProxy Light (ad esempio per utilizzare i flussi fuori casa), si consiglia caldamente l'utilizzo di soluzioni sicure come:
+
+* **Cloudflared (Cloudflare Tunnel)**
+* **Nginx Proxy Manager**
+
+**Nota bene:** Per implementare correttamente l'accesso esterno con queste App, è necessario possedere un **dominio valido** (es. `tuodominio.it`) correttamente configurato e puntato verso il proprio server.
+
+---
+
 ## 📦 Installazione tramite Repository (Consigliato)
 
-Per installare questo add-on, segui questi passaggi:
+Per installare questa App, segui questi passaggi:
 
 1. Vai sul tuo **Home Assistant**.
-2. Naviga in **Impostazioni** > **Componenti aggiuntivi** > **Store degli add-on**.
+2. Naviga in **Impostazioni** > **Componenti aggiuntivi** > **Store delle App**.
 3. Clicca sui tre puntini in alto a destra e seleziona **Repository**.
 4. Aggiungi il seguente URL:  
    `https://github.com/dartanidi/ha-addons`
@@ -45,10 +56,10 @@ Nella scheda **Configurazione**, puoi personalizzare i seguenti parametri:
 
 ## 🛠️ Manutenzione e Aggiornamento
 
-L'add-on scarica l'ultima versione del codice sorgente di EasyProxy direttamente da GitHub durante la fase di installazione o ricostruzione.
+L'App scarica l'ultima versione del codice sorgente di EasyProxy direttamente da GitHub durante la fase di installazione o ricostruzione.
 
 Per forzare l'aggiornamento all'ultima versione del codice originale:
-1. Vai nella pagina dell'Add-on.
+1. Vai nella pagina dell'App.
 2. Clicca sui tre puntini in alto a destra.
 3. Seleziona **Ricostruisci** (Rebuild).
 
@@ -56,7 +67,7 @@ Per forzare l'aggiornamento all'ultima versione del codice originale:
 
 ## 🖥️ Esempio di Utilizzo
 
-Una volta avviato, il proxy è raggiungibile all'indirizzo IP del tuo Home Assistant:
+Una volta avviata, l'App è raggiungibile all'indirizzo IP del tuo Home Assistant:
 * **URL Base:** `http://IP_HA:PORTA/`
 * **Playlist:** `http://192.168.1.100:7860/playlist?url=URL_SORGENTE`
 
@@ -67,14 +78,14 @@ Se hai impostato una `api_password`, aggiungila all'URL:
 
 ## ⚠️ Requisiti di Sistema
 
-Questo add-on richiede un'architettura a **64-bit**. 
+Questa App richiede un'architettura a **64-bit**. 
 Verifica che il tuo sistema sia compatibile (`aarch64` o `x86_64`) prima dell'installazione. L'architettura `armv7` (32-bit) non è supportata.
 
 ---
 
 ## 🤝 Crediti e Progetto Originale
 
-Questo Add-on è un pacchetto (wrapper) ottimizzato per Home Assistant. 
+Questa App è un pacchetto (wrapper) ottimizzato per Home Assistant. 
 Tutto il "motore" proxy, la logica di estrazione e il codice Python originale sono stati sviluppati e sono mantenuti da **realbestia1**.
 
 Per supportare il suo fantastico lavoro, visita il repository ufficiale e lascia una ⭐:
