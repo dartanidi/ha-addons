@@ -1,70 +1,74 @@
-# EasyProxy Light - Home Assistant Add-on
+# EasyProxy Light (64-bit Edition) - Home Assistant Add-on
 
-Un Server Proxy Universale HLS leggero e ottimizzato per Home Assistant. 
+Versione ultra-leggera e ottimizzata del Server Proxy Universale HLS per Home Assistant. 
 
-Questa è la versione **Light** di EasyProxy, progettata per consumare pochissime risorse, avviarsi istantaneamente ed evitare i crash di sistema sui dispositivi meno potenti (come i Raspberry Pi).
+Questa versione è progettata specificamente per sistemi a **64-bit** (Raspberry Pi 4/5 con HAOS 64-bit o MiniPC x86_64) e utilizza il browser di sistema per ridurre drasticamente l'occupazione di memoria sulla MicroSD/SSD.
 
 ## 🚀 Caratteristiche Principali
 
-* **Ultra-Leggero:** Rimosso Gunicorn, DVR e FlareSolverr per un'impronta in RAM minima.
-* **Server Nativo:** Utilizza direttamente il server web asincrono AIOHTTP.
-* **Playwright/Chromium Ready:** Display virtuale (`Xvfb`) integrato per supportare gli estrattori video complessi (come DLStreams) senza crash.
-* **Rete Host NATIVA:** Utilizza `host_network: true` per azzerare i problemi di instradamento di Home Assistant e garantire che i flussi video escano fluidi verso le tue Smart TV o player.
-* **Zero-Config:** Installi, avvii e funziona.
+* **System Chromium Optimization:** Risparmio di circa 500MB di spazio disco utilizzando i binari nativi di Debian.
+* **64-bit Native:** Supporto esclusivo per `aarch64` e `amd64` per garantire stabilità e prestazioni.
+* **Zero-Config Network:** Utilizza la modalità Rete Host nativa per eliminare conflitti di mapping.
+* **FlareSolverr Bridge:** Predisposizione per il collegamento a un'istanza esterna di FlareSolverr.
 
 ---
 
-## 📦 Installazione
+## 📦 Installazione tramite Repository (Consigliato)
 
-1. Copia la cartella `ha-easyproxy` (o come l'hai nominata) all'interno della cartella condivisa `/addons/` del tuo server Home Assistant.
-2. Vai su **Impostazioni** > **Componenti aggiuntivi** > **Raccolta** (Add-on Store).
-3. Clicca sui tre puntini in alto a destra e seleziona **Ricarica**.
-4. Scorri fino in fondo alla pagina, troverai la sezione dei tuoi Add-on locali.
-5. Clicca su **EasyProxy Light** e poi su **Installa**.
+Per installare questo add-on, segui questi passaggi:
+
+1. Vai sul tuo **Home Assistant**.
+2. Naviga in **Impostazioni** > **Componenti aggiuntivi** > **Store degli add-on**.
+3. Clicca sui tre puntini in alto a destra e seleziona **Repository**.
+4. Aggiungi il seguente URL:  
+   `https://github.com/dartanidi/ha-addons`
+5. Clicca su **Aggiungi** e poi chiudi il popup.
+6. Cerca **EasyProxy Light** nella lista (potrebbe essere necessario aggiornare la pagina) e clicca su **Installa**.
 
 ---
 
 ## ⚙️ Configurazione
 
-L'add-on si affida alla rete Host di Home Assistant. Questo significa che aprirà le porte direttamente sull'IP del tuo server domotico.
+Nella scheda **Configurazione**, puoi personalizzare i seguenti parametri:
 
-Nella scheda **Configurazione** dell'Add-on puoi personalizzare i seguenti parametri:
-
-| Parametro | Tipo | Predefinito | Descrizione |
-| :--- | :--- | :--- | :--- |
-| `port` | Numero | `7860` | La porta su cui il proxy sarà in ascolto. (Es. se imposti 8888, il proxy risponderà su `http://IP_HA:8888`). |
-| `mpd_mode` | Lista | `legacy` | Modalità di conversione dei flussi MPD (`legacy` o `ffmpeg`). |
-| `password` | Stringa | *Vuoto* | (Opzionale) Password per proteggere l'accesso alle API del proxy. |
-| `global_proxy` | Stringa | *Vuoto* | (Opzionale) Indirizzo proxy globale per mascherare il traffico in uscita. |
-| `transport_routes`| Stringa | *Vuoto* | (Opzionale) Regole di routing avanzate. |
-| `log_level` | Lista | `WARNING` | Livello dei log visibili nella scheda "Log" (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
-
----
-
-## 🖥️ Utilizzo
-
-1. Dopo aver configurato la porta (o lasciato la 7860 di default), clicca su **Avvia**.
-2. Attendi qualche secondo e vai nella scheda **Log** per verificare che ci sia la scritta: `🚀 Starting HLS Proxy Server...`.
-3. Torna nella scheda **Info** e clicca sul pulsante blu **APRI INTERFACCIA WEB**.
-4. Verrai reindirizzato automaticamente alla pagina di gestione del proxy.
-
-### Endpoint Principali
-
-Se vuoi usare il proxy direttamente nei tuoi lettori IPTV (come Tivimate) o script, l'URL base è:
-`http://<IP_HOME_ASSISTANT>:<PORTA>/`
-
-* **Generatore Playlist:** `/playlist?url=<definitions>`
-* **Proxy Stream Principale:** `/proxy/manifest.m3u8?url=<URL>`
-
-*(Nota: Se hai impostato una `password` nella configurazione, dovrai aggiungerla alle tue richieste API).*
+| Parametro | Descrizione |
+| :--- | :--- |
+| `port` | Porta su cui risponderà il proxy (Default: `7860`). |
+| `api_password` | Password opzionale per proteggere i tuoi link streaming. |
+| `global_proxy` | Indirizzo di un proxy esterno per mascherare tutto il traffico. |
+| `transport_routes` | Regole di routing avanzate (es. `{URL=vavoo.to, PROXY=...}`). |
+| `log_level` | Livello di dettaglio dei log (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
+| `flaresolverr_url` | URL di un'istanza esterna di FlareSolverr (es. `http://192.168.1.50:8191`). |
+| `flaresolverr_timeout` | Tempo massimo di attesa per la risoluzione dei captcha (Default: 60s). |
 
 ---
 
-## ⚠️ Risoluzione dei problemi (Troubleshooting)
+## 🛠️ Manutenzione e Aggiornamento
 
-* **L'add-on si ferma subito dopo l'avvio:** Controlla che la porta specificata in `port` non sia già utilizzata da un altro servizio o add-on (es. un altro server web) sul tuo Home Assistant. Cambia la porta e riavvia.
-* **I log mostrano errori di "Xvfb":** Assicurati di non aver rimosso `Xvfb` dal Dockerfile. Il display virtuale è essenziale per il funzionamento dei provider in modalità headless.
-* **Non riesco a raggiungere la WebUI:** Ricorda di usare l'**Indirizzo IP Locale** di Home Assistant (`http://192.168.x.x:7860`). I servizi come Nabu Casa o DuckDNS (HTTPS) non reindirizzano automaticamente le porte personalizzate degli add-on in rete host.
+L'add-on scarica l'ultima versione del codice sorgente di EasyProxy direttamente da GitHub durante la fase di installazione o ricostruzione.
+
+Per forzare l'aggiornamento all'ultima versione del codice originale:
+1. Vai nella pagina dell'Add-on.
+2. Clicca sui tre puntini in alto a destra.
+3. Seleziona **Ricostruisci** (Rebuild).
 
 ---
-*Creato per la community di Home Assistant.*
+
+## 🖥️ Esempio di Utilizzo
+
+Una volta avviato, il proxy è raggiungibile all'indirizzo IP del tuo Home Assistant:
+* **URL Base:** `http://IP_HA:PORTA/`
+* **Playlist:** `http://192.168.1.100:7860/playlist?url=URL_SORGENTE`
+
+Se hai impostato una `api_password`, aggiungila all'URL:
+`http://192.168.1.100:7860/playlist?url=...&api_password=TUA_PASS`
+
+---
+
+## ⚠️ Requisiti di Sistema
+
+Questo add-on richiede un'architettura a **64-bit**. 
+Verifica che il tuo sistema sia compatibile (`aarch64` o `x86_64`) prima dell'installazione. L'architettura `armv7` (32-bit) non è supportata.
+
+---
+*Manutenuto nel repository: https://github.com/dartanidi/ha-addons*
