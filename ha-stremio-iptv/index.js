@@ -35,13 +35,12 @@ async function updateData() {
         const newGenres = new Set();
         
         let current = null;
-        let pendingOptions = {}; // Salva le opzioni extra (#KODIPROP:#EXTVLCOPT) tra le righe
+        let pendingOptions = {};
 
         for (const line of lines) {
             const clean = line.trim();
             if (clean === '') continue;
 
-            // Cattura opzioni VLC/Kodi extra (es: #KODIPROP:inputstream.adaptive.license_key=...)
             if (clean.startsWith('#KODIPROP:') || clean.startsWith('#EXTVLCOPT:')) {
                 const optMatch = clean.match(/[#\w]+:(.*)=(.*)/);
                 if (optMatch) {
@@ -62,9 +61,9 @@ async function updateData() {
                 current = { 
                     name: nameMatch ? nameMatch[1].trim() : 'Unknown', 
                     attrs: attrs,
-                    options: pendingOptions // Assegna le opzioni accumulate
+                    options: pendingOptions
                 };
-                pendingOptions = {}; // Resetta per il canale successivo
+                pendingOptions = {};
             } else if (!clean.startsWith('#') && current) {
                 current.url = clean;
                 const group = current.attrs['group-title'] || 'Altro';
@@ -79,7 +78,7 @@ async function updateData() {
                     genre: group,
                     logo: current.attrs['tvg-logo'] || `https://via.placeholder.com/300x300/333333/FFFFFF?text=${encodeURIComponent(current.name)}`,
                     tvgId: current.attrs['tvg-id'] || null,
-                    options: current.options // Salviamo le chiavi estratte
+                    options: current.options
                 });
                 current = null;
             }
@@ -109,7 +108,6 @@ async function updateData() {
     }
 }
 
-// Funzione di avvio principale
 async function run() {
     await updateData();
 
@@ -174,18 +172,15 @@ async function run() {
         const ch = channels.find(c => c.id === id);
         if (!ch) return { streams: [] };
 
-        // Costruzione dinamica dei parametri per EasyProxy
         let extraParams = '';
         let clearkeyParam = '';
 
         if (ch.options && Object.keys(ch.options).length > 0) {
             for (const [key, value] of Object.entries(ch.options)) {
-                // Cattura la chiave ClearKey
                 if (key.includes('license_key') || key.includes('clearkey')) {
                     const cleanKey = value.replace(/"/g, '');
-                    clearkeyParam = `&clearkey=${encodeURIComponent(cleanKey)}`; // EasyProxy vuole KID:KEY
+                    clearkeyParam = `&clearkey=${encodeURIComponent(cleanKey)}`;
                 }
-                // Header personalizzati
                 if (key.includes('http-user-agent')) {
                     extraParams += `&h_user-agent=${encodeURIComponent(value)}`;
                 }
@@ -195,24 +190,26 @@ async function run() {
             }
         }
 
-        // User-Agent predefinito se non già impostato
         if (!extraParams.includes('h_user-agent')) {
             extraParams += `&h_user-agent=${encodeURIComponent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')}`;
         }
 
-        // Scelta endpoint EasyProxy in base al tipo di stream
-        let endpoint = '/proxy/hls/manifest.m3u8'; // default per HLS
-        if (ch.url.toLowerCase().includes('.mpd')) {
-            endpoint = '/proxy/mpd/manifest.m3u8'; // per flussi DASH
+        // 🔥 Logica endpoint: se c'è una chiave DRM, usa /proxy/mpd/manifest.m3u8
+        let endpoint;
+        if (clearkeyParam) {
+            endpoint = '/proxy/mpd/manifest.m3u8';   // DASH con DRM
+        } else if (ch.url.toLowerCase().includes('.mpd')) {
+            endpoint = '/proxy/mpd/manifest.m3u8';   // DASH senza DRM
+        } else {
+            endpoint = '/proxy/hls/manifest.m3u8';   // HLS normale
         }
 
-        // Aggiunge api_password solo se configurata
         const passwordParam = EASYPROXY_PASSWORD ? `&api_password=${encodeURIComponent(EASYPROXY_PASSWORD)}` : '';
 
-        // URL completo per EasyProxy
         const proxyUrl = `${EASYPROXY_URL}${endpoint}?d=${encodeURIComponent(ch.url)}${passwordParam}${clearkeyParam}${extraParams}`;
 
-        console.log(`[Stream] Richiesto: ${ch.name} -> ${clearkeyParam ? '🔐 DRM' : '🔓 Chiaro'} -> ${endpoint}`);
+        console.log(`[Stream] ${ch.name} -> ${clearkeyParam ? '🔐 DRM' : '🔓 Chiaro'} -> ${endpoint}`);
+        console.log(`[Stream] URL: ${proxyUrl}`);
 
         return {
             streams: [{
@@ -233,7 +230,6 @@ async function run() {
         next();
     });
 
-    // Iniettiamo le opzioni di generi sul file JSON esposto da express
     app.get('/manifest.json', (req, res) => {
         const manifest = builder.getInterface().manifest;
         manifest.catalogs[0].extra[0].options = Array.from(genres).sort();
