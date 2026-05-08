@@ -1,5 +1,5 @@
 const express = require('express');
-const { addonBuilder, serveHTTP } = require('stremio-addon-sdk');
+const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 const axios = require('axios');
 const xml2js = require('xml2js');
 const crypto = require('crypto');
@@ -27,8 +27,7 @@ async function downloadEPG(url) {
 }
 
 async function updateData() {
-    console.log(`[Update] Inizio aggiornamento programmato...`);
-    // Parsing M3U
+    console.log(`[Update] Lettura dati in corso...`);
     try {
         const { data } = await axios.get(M3U_URL, { timeout: 30000 });
         const lines = data.split('\n');
@@ -67,7 +66,6 @@ async function updateData() {
         console.log(`[M3U] Caricati ${channels.length} canali.`);
     } catch (e) { console.error(`[M3U] Errore: ${e.message}`); }
 
-    // Parsing EPG
     if (EPG_URL) {
         try {
             const data = await downloadEPG(EPG_URL);
@@ -77,7 +75,10 @@ async function updateData() {
                 result.tv.programme.forEach(p => {
                     const ch = p.$.channel;
                     if (!epgData[ch]) epgData[ch] = [];
-                    epgData[ch].push({ title: p.title ? (p.title[0]._ || p.title[0]) : 'Unknown' });
+                    epgData[ch].push({ 
+                        title: p.title ? (p.title[0]._ || p.title[0]) : 'Unknown',
+                        desc: p.desc ? (p.desc[0]._ || p.desc[0]) : ''
+                    });
                 });
             }
             console.log(`[EPG] Caricata per ${Object.keys(epgData).length} canali.`);
@@ -85,113 +86,131 @@ async function updateData() {
     }
 }
 
-// Handler Addon
-const builder = new addonBuilder({
-    id: 'org.iptv.easyproxy',
-    version: '1.0.0',
-    name: 'HA IPTV Proxy',
-    description: 'Live TV via EasyProxy',
-    resources: ['catalog', 'meta', 'stream'],
-    types: ['tv'],
-    catalogs: [{
-        type: 'tv',
-        id: 'iptv_live',
-        name: 'Canali TV',
-        extra: [{ name: 'genre', isRequired: false, options: [] }] // Popolato dinamicamente
-    }],
-    idPrefixes: ['iptv_'],
-    behaviorHints: { configurable: false },
-    logo: "https://dl.strem.io/addon-logo.png"
-});
-
-// Aggiunto "async" per risolvere il TypeError di Stremio SDK
-builder.defineCatalogHandler(async ({ extra }) => {
-    let filtered = channels;
-    if (extra && extra.genre) {
-        filtered = filtered.filter(c => c.genre === extra.genre);
-    }
-    // Stremio accetta un massimo di 100 meta per risposta senza paginazione, tagliamo per sicurezza
-    const metas = filtered.slice(0, 100).map(c => ({ 
-        id: c.id, 
-        type: 'tv', 
-        name: c.name, 
-        poster: c.logo, 
-        posterShape: 'square',
-        genres: [c.genre] 
-    }));
-    return Promise.resolve({ metas });
-});
-
-// Aggiunto "async"
-builder.defineMetaHandler(async ({ id }) => {
-    const ch = channels.find(c => c.id === id);
-    if (!ch) return Promise.resolve({ meta: null });
-    
-    let desc = `Categoria: ${ch.genre}`;
-    if (ch.tvgId && epgData[ch.tvgId] && epgData[ch.tvgId].length > 0) {
-        desc += `\n\nORA IN ONDA:\n${epgData[ch.tvgId][0].title}`;
-    }
-    
-    return Promise.resolve({ 
-        meta: { 
-            id: ch.id, 
-            type: 'tv', 
-            name: ch.name, 
-            poster: ch.logo, 
-            posterShape: 'square',
-            background: ch.logo,
-            description: desc,
-            genres: [ch.genre]
-        } 
-    });
-});
-
-// Aggiunto "async"
-builder.defineStreamHandler(async ({ id }) => {
-    const ch = channels.find(c => c.id === id);
-    if (!ch) return Promise.resolve({ streams: [] });
-    
-    const proxyUrl = `${EASYPROXY_URL}/live?url=${encodeURIComponent(ch.url)}&password=${EASYPROXY_PASSWORD}`;
-    
-    console.log(`[Stream] Richiesto ${ch.name}`);
-    
-    return Promise.resolve({ 
-        streams: [{ 
-            title: 'EasyProxy Stream', 
-            url: proxyUrl 
-        }] 
-    });
-});
-
-// Setup Server con Middleware CORS Globale
-const app = express();
-
-// Middleware CORS
-app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', '*');
-    res.setHeader('Access-Control-Allow-Methods', '*');
-    if (req.method === 'OPTIONS') return res.sendStatus(200);
-    next();
-});
-
-app.get('/manifest.json', (req, res) => {
-    const manifest = builder.getInterface().manifest;
-    // Aggiorniamo i generi con le categorie estratte dalla M3U
-    manifest.catalogs[0].extra[0].options = Array.from(genres).sort();
-    res.json(manifest);
-});
-
+// Funzione di avvio principale
 async function run() {
+    // 1. SCARICA I DATI PRIMA DI CREARE IL MANIFEST
     await updateData();
-    setInterval(updateData, REFRESH_INTERVAL);
-    
-    app.listen(PORT, '0.0.0.0', () => {
-        console.log(`🚀 Addon pronto sulla porta ${PORT}`);
+
+    // 2. CREA IL MANIFEST AUTORIZZANDO ESPLICITAMENTE SKIP E SEARCH
+    const manifest = {
+        id: 'org.iptv.easyproxy',
+        version: '1.0.0',
+        name: 'HA IPTV Proxy',
+        description: 'Live TV via EasyProxy',
+        resources: ['catalog', 'meta', 'stream'],
+        types: ['tv'],
+        catalogs: [{
+            type: 'tv',
+            id: 'iptv_live',
+            name: 'Canali TV',
+            extra: [
+                { name: 'genre', isRequired: false, options: Array.from(genres).sort() },
+                { name: 'search', isRequired: false },
+                { name: 'skip', isRequired: false } // Risolve l'errore 404
+            ]
+        }],
+        idPrefixes: ['iptv_'],
+        behaviorHints: { configurable: false },
+        logo: "https://dl.strem.io/addon-logo.png"
+    };
+
+    const builder = new addonBuilder(manifest);
+
+    // Gestione Catalogo
+    builder.defineCatalogHandler(async ({ extra }) => {
+        let filtered = channels;
+        
+        if (extra && extra.genre) {
+            filtered = filtered.filter(c => c.genre === extra.genre);
+        }
+        if (extra && extra.search) {
+            const query = extra.search.toLowerCase();
+            filtered = filtered.filter(c => c.name.toLowerCase().includes(query));
+        }
+        
+        const skip = extra && extra.skip ? parseInt(extra.skip) : 0;
+
+        const metas = filtered.slice(skip, skip + 100).map(c => ({
+            id: c.id,
+            type: 'tv',
+            name: c.name,
+            poster: c.logo,
+            posterShape: 'square',
+            genres: [c.genre]
+        }));
+        return { metas };
     });
-    
-    // ServeHTTP internamente applica il router dell'SDK
-    serveHTTP(builder.getInterface(), { server: app, path: '/' });
+
+    // Gestione Metadati
+    builder.defineMetaHandler(async ({ id }) => {
+        const ch = channels.find(c => c.id === id);
+        if (!ch) return { meta: null };
+
+        let desc = `Categoria: ${ch.genre}`;
+        if (ch.tvgId && epgData[ch.tvgId] && epgData[ch.tvgId].length > 0) {
+            desc += `\n\nORA IN ONDA:\n${epgData[ch.tvgId][0].title}`;
+            if (epgData[ch.tvgId][0].desc) {
+                desc += `\n${epgData[ch.tvgId][0].desc}`;
+            }
+        }
+
+        return {
+            meta: {
+                id: ch.id,
+                type: 'tv',
+                name: ch.name,
+                poster: ch.logo,
+                posterShape: 'square',
+                background: ch.logo,
+                description: desc,
+                genres: [ch.genre]
+            }
+        };
+    });
+
+    // Gestione Stream
+    builder.defineStreamHandler(async ({ id }) => {
+        const ch = channels.find(c => c.id === id);
+        if (!ch) return { streams: [] };
+
+        const proxyUrl = `${EASYPROXY_URL}/live?url=${encodeURIComponent(ch.url)}&password=${EASYPROXY_PASSWORD}`;
+        console.log(`[Stream] Richiesto: ${ch.name}`);
+
+        return {
+            streams: [{
+                title: 'EasyProxy Stream',
+                url: proxyUrl
+            }]
+        };
+    });
+
+    const app = express();
+
+    // Middleware CORS
+    app.use((req, res, next) => {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Headers', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        if (req.method === 'OPTIONS') return res.sendStatus(200);
+        next();
+    });
+
+    // Monta le rotte dell'SDK (creando i vari endpoint /catalog, /meta, /stream)
+    const iface = builder.getInterface();
+    app.use('/', getRouter(iface));
+
+    // Avvia server
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`🚀 Addon in ascolto sulla porta ${PORT}`);
+    });
+
+    // Avvia loop aggiornamenti
+    setInterval(async () => {
+        await updateData();
+        // Aggiorna silenziosamente il manifest in memoria per le nuove categorie
+        iface.manifest.catalogs[0].extra[0].options = Array.from(genres).sort();
+    }, REFRESH_INTERVAL);
 }
 
+// Lancia l'app
 run();
