@@ -194,26 +194,13 @@ async function run() {
             extraParams += `&h_user-agent=${encodeURIComponent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')}`;
         }
 
-        // 🔥 FORZATURA ASSOLUTA: SE DRM -> /proxy/mpd/manifest.m3u8
-        let endpoint;
-        if (clearkeyParam) {
-            endpoint = '/proxy/mpd/manifest.m3u8';   // DASH con DRM
-        } else if (ch.url.toLowerCase().includes('.mpd')) {
-            endpoint = '/proxy/mpd/manifest.m3u8';   // DASH senza DRM
-        } else {
-            endpoint = '/proxy/hls/manifest.m3u8';   // HLS nativo
-        }
-
+        // 🔥 UNICO ENDPOINT GENERICO: /proxy/manifest.m3u8
+        const endpoint = '/proxy/manifest.m3u8';
         const passwordParam = EASYPROXY_PASSWORD ? `&api_password=${encodeURIComponent(EASYPROXY_PASSWORD)}` : '';
+
         const proxyUrl = `${EASYPROXY_URL}${endpoint}?d=${encodeURIComponent(ch.url)}${passwordParam}${clearkeyParam}${extraParams}`;
 
-        // Log DETTAGLIATO per verificare l'endpoint
-        console.log(`==============================================================`);
-        console.log(`[Stream] Canale: ${ch.name}`);
-        console.log(`[Stream] DRM: ${clearkeyParam ? 'Sì' : 'No'}`);
-        console.log(`[Stream] Endpoint scelto: ${endpoint}`);
-        console.log(`[Stream] URL completo: ${proxyUrl}`);
-        console.log(`==============================================================`);
+        console.log(`[Stream] ${ch.name} -> ${clearkeyParam ? '🔐 DRM' : '🔓 Chiaro'} -> ${endpoint}`);
 
         return {
             streams: [{
