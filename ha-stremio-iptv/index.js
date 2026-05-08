@@ -35,12 +35,13 @@ async function updateData() {
         const newGenres = new Set();
         
         let current = null;
-        let pendingOptions = {};
+        let pendingOptions = {}; // Salva le opzioni extra (#KODIPROP:#EXTVLCOPT) tra le righe
 
         for (const line of lines) {
             const clean = line.trim();
             if (clean === '') continue;
 
+            // Cattura opzioni VLC/Kodi extra (es: #KODIPROP:inputstream.adaptive.license_key=...)
             if (clean.startsWith('#KODIPROP:') || clean.startsWith('#EXTVLCOPT:')) {
                 const optMatch = clean.match(/[#\w]+:(.*)=(.*)/);
                 if (optMatch) {
@@ -61,9 +62,9 @@ async function updateData() {
                 current = { 
                     name: nameMatch ? nameMatch[1].trim() : 'Unknown', 
                     attrs: attrs,
-                    options: pendingOptions
+                    options: pendingOptions // Assegna le opzioni accumulate
                 };
-                pendingOptions = {};
+                pendingOptions = {}; // Resetta per il canale successivo
             } else if (!clean.startsWith('#') && current) {
                 current.url = clean;
                 const group = current.attrs['group-title'] || 'Altro';
@@ -78,7 +79,7 @@ async function updateData() {
                     genre: group,
                     logo: current.attrs['tvg-logo'] || `https://via.placeholder.com/300x300/333333/FFFFFF?text=${encodeURIComponent(current.name)}`,
                     tvgId: current.attrs['tvg-id'] || null,
-                    options: current.options
+                    options: current.options // Salviamo le chiavi estratte
                 });
                 current = null;
             }
@@ -108,6 +109,7 @@ async function updateData() {
     }
 }
 
+// Funzione di avvio principale
 async function run() {
     await updateData();
 
@@ -168,39 +170,41 @@ async function run() {
         };
     });
 
+    // NUOVO StreamHandler MINIMALE (senza header personalizzati)
     builder.defineStreamHandler(async ({ id }) => {
         const ch = channels.find(c => c.id === id);
         if (!ch) return { streams: [] };
 
-        let extraParams = '';
-        let clearkeyParam = '';
+        // Preparazione parametri essenziali
+        let params = '';
 
-        if (ch.options && Object.keys(ch.options).length > 0) {
+        // Aggiunge api_password se configurata
+        if (EASYPROXY_PASSWORD) {
+            params += `&api_password=${encodeURIComponent(EASYPROXY_PASSWORD)}`;
+        }
+
+        // Aggiunge clearkey se presente nelle opzioni del canale
+        if (ch.options) {
             for (const [key, value] of Object.entries(ch.options)) {
                 if (key.includes('license_key') || key.includes('clearkey')) {
                     const cleanKey = value.replace(/"/g, '');
-                    clearkeyParam = `&clearkey=${encodeURIComponent(cleanKey)}`;
-                }
-                if (key.includes('http-user-agent')) {
-                    extraParams += `&h_user-agent=${encodeURIComponent(value)}`;
-                }
-                if (key.includes('http-referer')) {
-                    extraParams += `&h_referer=${encodeURIComponent(value)}`;
+                    params += `&clearkey=${encodeURIComponent(cleanKey)}`;
                 }
             }
         }
 
-        if (!extraParams.includes('h_user-agent')) {
-            extraParams += `&h_user-agent=${encodeURIComponent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')}`;
-        }
+        // NESSUNA aggiunta automatica di h_user-agent, h_referer, ecc.
+        // EasyProxy userà i suoi default, come fa con il Playlist Builder.
 
-        // 🔥 UNICO ENDPOINT GENERICO: /proxy/manifest.m3u8
         const endpoint = '/proxy/manifest.m3u8';
-        const passwordParam = EASYPROXY_PASSWORD ? `&api_password=${encodeURIComponent(EASYPROXY_PASSWORD)}` : '';
+        const proxyUrl = `${EASYPROXY_URL}${endpoint}?d=${encodeURIComponent(ch.url)}${params}`;
 
-        const proxyUrl = `${EASYPROXY_URL}${endpoint}?d=${encodeURIComponent(ch.url)}${passwordParam}${clearkeyParam}${extraParams}`;
-
-        console.log(`[Stream] ${ch.name} -> ${clearkeyParam ? '🔐 DRM' : '🔓 Chiaro'} -> ${endpoint}`);
+        console.log(`==============================================================`);
+        console.log(`[Stream] Canale: ${ch.name}`);
+        console.log(`[Stream] DRM: ${params.includes('clearkey') ? 'Sì' : 'No'}`);
+        console.log(`[Stream] Endpoint scelto: ${endpoint}`);
+        console.log(`[Stream] URL completo: ${proxyUrl}`);
+        console.log(`==============================================================`);
 
         return {
             streams: [{
@@ -221,6 +225,7 @@ async function run() {
         next();
     });
 
+    // Iniettiamo le opzioni di generi sul file JSON esposto da express
     app.get('/manifest.json', (req, res) => {
         const manifest = builder.getInterface().manifest;
         manifest.catalogs[0].extra[0].options = Array.from(genres).sort();
