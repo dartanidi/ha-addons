@@ -1,7 +1,7 @@
 name: "Stremio IPTV addon"
 description: "Add-on Stremio per Live TV tramite M3U, EPG (supporta .gz) e routing su EasyProxy."
-version: "1.0.0"
-slug: "stremio_iptv"
+version: "1.0.1"
+slug: "stremio_iptv_proxy"
 arch:
   - aarch64
   - amd64
@@ -18,7 +18,7 @@ options:
   easyproxy_password: "la_tua_password"
 schema:
   m3u_url: str
-  epg_url: str
+  epg_url: str?
   refresh_interval_minutes: int(1,)
   easyproxy_url: str
   easyproxy_password: password
