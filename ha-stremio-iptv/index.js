@@ -177,19 +177,12 @@ async function run() {
         // Costruzione dinamica dei parametri per EasyProxy basati sulle opzioni lette dalla M3U
         let extraParams = '';
         
-        // Verifica se ci sono chiavi di decriptazione ClearKey (spesso in inputstream.adaptive.license_key)
         if (ch.options && Object.keys(ch.options).length > 0) {
             for (const [key, value] of Object.entries(ch.options)) {
-                // Selezioniamo le chiavi ClearKey
                 if (key.includes('license_key') || key.includes('clearkey')) {
-                    // Formato tipico: {"keys":[{"kty":"oct","k":"BASE64_KEY","kid":"BASE64_ID"}],"type":"temporary"}
-                    // Oppure formato diretto: KID:KEY
-                    // Lo passiamo direttamente come key_json o raw_key a EasyProxy (dipende dalla sua implementazione)
-                    // EasyProxy "Light" tipicamente legge le ClearKey passandole come stringa nel paramentro 'key' o 'ck'
-                    const cleanKey = value.replace(/"/g, ''); // Rimuove eventuali apici
+                    const cleanKey = value.replace(/"/g, ''); 
                     extraParams += `&clearkey=${encodeURIComponent(cleanKey)}`; 
                 }
-                // Selezioniamo gli header (User-Agent, Referer)
                 if (key.includes('http-user-agent')) {
                     extraParams += `&h_user-agent=${encodeURIComponent(value)}`;
                 }
@@ -199,19 +192,27 @@ async function run() {
             }
         }
 
-        // Se non troviamo header specifici, possiamo forzare un User-Agent generico per evitare blocchi 403
         if (!extraParams.includes('h_user-agent')) {
             extraParams += `&h_user-agent=${encodeURIComponent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')}`;
         }
 
-        // Assemblaggio finale
-        const proxyUrl = `${EASYPROXY_URL}/proxy/hls/manifest.m3u8?d=${encodeURIComponent(ch.url)}&api_password=${EASYPROXY_PASSWORD}&format=hls${extraParams}`;
+        // ==========================================
+        // SCELTA DINAMICA DELL'ENDPOINT EASYPROXY
+        // ==========================================
+        let endpoint = '/proxy/hls/manifest.m3u8'; // Default per i canali standard m3u8
         
-        console.log(`[Stream] Richiesto: ${ch.name} (Parametri estratti: ${Object.keys(ch.options || {}).length})`);
+        // Se il canale è DASH (.mpd), usiamo l'API corretta di EasyProxy
+        if (ch.url.toLowerCase().includes('.mpd')) {
+            endpoint = '/proxy/mpd/manifest.m3u8';
+        }
+
+        const proxyUrl = `${EASYPROXY_URL}${endpoint}?d=${encodeURIComponent(ch.url)}&api_password=${EASYPROXY_PASSWORD}${extraParams}`;
+        
+        console.log(`[Stream] Richiesto: ${ch.name} -> Routing via ${endpoint}`);
 
         return {
             streams: [{
-                title: 'EasyProxy Stream (DRM Support)',
+                title: 'EasyProxy Stream',
                 url: proxyUrl,
                 behaviorHints: { notWebReady: true, bingeGroup: "tv" }
             }]
@@ -226,6 +227,14 @@ async function run() {
         res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
         if (req.method === 'OPTIONS') return res.sendStatus(200);
         next();
+    });
+
+    // Iniettiamo le opzioni di generi sul file JSON esposto da express
+    app.get('/manifest.json', (req, res) => {
+        const manifest = builder.getInterface().manifest;
+        manifest.catalogs[0].extra[0].options = Array.from(genres).sort();
+        res.setHeader('Content-Type', 'application/json');
+        res.json(manifest);
     });
 
     const iface = builder.getInterface();
