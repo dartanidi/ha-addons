@@ -11,7 +11,7 @@ const EPG_URL = process.env.EPG_URL;
 const REFRESH_INTERVAL = (parseInt(process.env.REFRESH_INTERVAL_MIN) || 60) * 60 * 1000;
 const EASYPROXY_URL = process.env.EASYPROXY_URL?.replace(/\/$/, ''); 
 const EASYPROXY_PASSWORD = process.env.EASYPROXY_PASSWORD;
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Stato in memoria
 let channels = [];
