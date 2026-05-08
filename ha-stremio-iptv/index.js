@@ -174,17 +174,18 @@ async function run() {
         const ch = channels.find(c => c.id === id);
         if (!ch) return { streams: [] };
 
-        // Costruzione dinamica dei parametri per EasyProxy basati sulle opzioni lette dalla M3U
+        // Costruzione dinamica dei parametri per EasyProxy
         let extraParams = '';
-        let hasClearkey = false;
-        
+        let clearkeyParam = '';
+
         if (ch.options && Object.keys(ch.options).length > 0) {
             for (const [key, value] of Object.entries(ch.options)) {
+                // Cattura la chiave ClearKey
                 if (key.includes('license_key') || key.includes('clearkey')) {
-                    const cleanKey = value.replace(/"/g, ''); 
-                    extraParams += `&clearkey=${encodeURIComponent(cleanKey)}`;
-                    hasClearkey = true;
+                    const cleanKey = value.replace(/"/g, '');
+                    clearkeyParam = `&clearkey=${encodeURIComponent(cleanKey)}`; // EasyProxy vuole KID:KEY
                 }
+                // Header personalizzati
                 if (key.includes('http-user-agent')) {
                     extraParams += `&h_user-agent=${encodeURIComponent(value)}`;
                 }
@@ -194,28 +195,24 @@ async function run() {
             }
         }
 
+        // User-Agent predefinito se non già impostato
         if (!extraParams.includes('h_user-agent')) {
             extraParams += `&h_user-agent=${encodeURIComponent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')}`;
         }
 
-        // ==========================================
-        // SCELTA DINAMICA DELL'ENDPOINT EASYPROXY
-        // ==========================================
-        let endpoint = '/proxy/hls/manifest.m3u8'; // Default per canali standard
-        
+        // Scelta endpoint EasyProxy in base al tipo di stream
+        let endpoint = '/proxy/hls/manifest.m3u8'; // default per HLS
         if (ch.url.toLowerCase().includes('.mpd')) {
-            endpoint = '/proxy/mpd/manifest.m3u8';
-        }
-        
-        // 🔥 CORREZIONE DRM: se il canale ha una chiave ClearKey, usa l'endpoint di decrypt
-        if (hasClearkey) {
-            endpoint = '/decrypt/manifest.m3u8';
+            endpoint = '/proxy/mpd/manifest.m3u8'; // per flussi DASH
         }
 
+        // Aggiunge api_password solo se configurata
         const passwordParam = EASYPROXY_PASSWORD ? `&api_password=${encodeURIComponent(EASYPROXY_PASSWORD)}` : '';
-        const proxyUrl = `${EASYPROXY_URL}${endpoint}?d=${encodeURIComponent(ch.url)}${passwordParam}${extraParams}`;
-        
-        console.log(`[Stream] Richiesto: ${ch.name} -> ${hasClearkey ? '🔐 DRM' : '🔓 Chiaro'} -> ${endpoint}`);
+
+        // URL completo per EasyProxy
+        const proxyUrl = `${EASYPROXY_URL}${endpoint}?d=${encodeURIComponent(ch.url)}${passwordParam}${clearkeyParam}${extraParams}`;
+
+        console.log(`[Stream] Richiesto: ${ch.name} -> ${clearkeyParam ? '🔐 DRM' : '🔓 Chiaro'} -> ${endpoint}`);
 
         return {
             streams: [{
