@@ -173,7 +173,8 @@ async function run() {
         const ch = channels.find(c => c.id === id);
         if (!ch) return { streams: [] };
 
-        const proxyUrl = `${EASYPROXY_URL}/live?url=${encodeURIComponent(ch.url)}&password=${EASYPROXY_PASSWORD}`;
+        // URL corretto di EasyProxy per il routing degli stream
+        const proxyUrl = `${EASYPROXY_URL}/proxy/manifest.m3u8?url=${encodeURIComponent(ch.url)}&api_password=${EASYPROXY_PASSWORD}`;
         console.log(`[Stream] Richiesto: ${ch.name}`);
 
         return {
