@@ -4,6 +4,7 @@ const axios = require('axios');
 const xml2js = require('xml2js');
 const crypto = require('crypto');
 const zlib = require('zlib');
+const sharp = require('sharp');
 
 // Configurazione Ambiente
 const PORT = process.env.PORT || 3000;
@@ -13,9 +14,8 @@ const REFRESH_INTERVAL = (parseInt(process.env.REFRESH_INTERVAL_MIN) || 60) * 60
 const EASYPROXY_URL = process.env.EASYPROXY_URL?.replace(/\/$/, ''); 
 const EASYPROXY_PASSWORD = process.env.EASYPROXY_PASSWORD;
 
-// Mappa completa tvg-id playlist → id EPG (basata sul frammento XML fornito)
+// Mappa tvg-id playlist → id EPG
 const EPG_TVG_ID_MAP = {
-  // --- Intrattenimento ---
   "sky.uno.it": "Sky.Uno.it",
   "sky.atlantic.it": "Sky.Atlantic.it",
   "sky.serie.it": "Sky.Serie.it",
@@ -24,10 +24,8 @@ const EPG_TVG_ID_MAP = {
   "sky.documentaries.it": "Sky.Documentaries.it",
   "sky.nature.it": "Sky.Nature.it",
   "sky.arte.it": "Sky.Arte.it",
-  "sky.adventure.it": "Sky.Adventure.it",       // ipotizzando "Sky.Adventure.it"
-  "skycollection": "Sky.Collection.it",         // ipotizzando "Sky.Collection.it"
-  
-  // --- Cinema ---
+  "sky.adventure.it": "Sky.Adventure.it",
+  "skycollection": "Sky.Collection.it",
   "sky.cinema.uno.it": "Sky.Cinema.Uno.it",
   "sky.cinema.action.it": "Sky.Cinema.Action.it",
   "sky.cinema.comedy.it": "Sky.Cinema.Comedy.it",
@@ -37,8 +35,6 @@ const EPG_TVG_ID_MAP = {
   "sky.cinema.suspense.it": "Sky.Cinema.Suspense.it",
   "sky.cinema.collection.it": "Sky.Cinema.Collection.it",
   "skycinemaillumination": "Sky.Cinema.Illumination.it",
-  
-  // --- Sport ---
   "sky.sport.24.it": "Sky.Sport.24.it",
   "sky.sport.uno.it": "Sky.Sport.Uno.it",
   "sky.sport.arena.it": "Sky.Sport.Arena.it",
@@ -51,8 +47,6 @@ const EPG_TVG_ID_MAP = {
   "sky.sport.golf.it": "Sky.Sport.Golf.it",
   "skysportbasket": "Sky.Sport.Basket.it",
   "sky.sport.legend.it": "Sky.Sport.Legend.it",
-  
-  // --- Numerali ---
   "sky.sport..251.it": "Sky.Sport.251.it",
   "sky.sport..252.it": "Sky.Sport.252.it",
   "sky.sport..253.it": "Sky.Sport.253.it",
@@ -62,11 +56,7 @@ const EPG_TVG_ID_MAP = {
   "sky.sport..257.it": "Sky.Sport.257.it",
   "sky.sport..258.it": "Sky.Sport.258.it",
   "sky.sport..259.it": "Sky.Sport.259.it",
-  
-  // --- News ---
   "sky.tg24.it": "Sky.TG24.it",
-  
-  // --- Canali bambini/altro trasmessi via Sky ma con id noto ---
   "comedy.central.it": "Comedy.Central.it",
   "mtv.hd.it": "MTV.HD.it",
   "gambero.rosso.hd.it": "Gambero.Rosso.HD.it",
@@ -91,7 +81,6 @@ async function downloadEPG(url) {
 async function updateData() {
     console.log(`[Update] Scaricamento playlist pre‑elaborata da EasyProxy...`);
     try {
-        // Costruzione automatica dell'URL per l'endpoint /playlist di EasyProxy
         let playlistUrl;
         if (EASYPROXY_URL) {
             const params = new URLSearchParams();
@@ -127,13 +116,24 @@ async function updateData() {
                 newGenres.add(group);
                 const idHash = crypto.createHash('md5').update(clean).digest('hex').substring(0, 10);
                 
+                // Prepara URL del logo: se esiste un logo originale, usa il proxy locale
+                const originalLogo = currentAttrs['tvg-logo'] || null;
+                const cleanName = currentName.replace(/\[.*?\]/g, '').trim();
+                let logoUrl;
+                if (originalLogo) {
+                    // Usa il proxy di ridimensionamento locale (l'addon è esposto su porta 3000)
+                    logoUrl = `http://localhost:${PORT}/logo?url=${encodeURIComponent(originalLogo)}&name=${encodeURIComponent(cleanName)}`;
+                } else {
+                    logoUrl = `https://via.placeholder.com/320x180/1a1a1a/ffffff?text=${encodeURIComponent(cleanName)}`;
+                }
+                
                 newChannels.push({
                     id: `iptv_${idHash}`,
                     type: 'tv',
                     name: currentName,
                     url: clean,
                     genre: group,
-                    logo: currentAttrs['tvg-logo'] || `https://via.placeholder.com/320x180/1a1a1a/ffffff?text=${encodeURIComponent(currentName.replace(/\[.*?\]/g, '').trim())}`,
+                    logo: logoUrl,
                     tvgId: currentAttrs['tvg-id'] || null
                 });
                 currentName = '';
@@ -172,7 +172,7 @@ async function run() {
         id: 'org.iptv.easyproxy',
         version: '1.0.0',
         name: 'HA IPTV Proxy',
-        description: 'Live TV via EasyProxy con EPG e icone 16:9',
+        description: 'Live TV via EasyProxy con EPG e loghi ridimensionati',
         resources: ['catalog', 'meta', 'stream'],
         types: ['tv'],
         catalogs: [{
@@ -215,7 +215,6 @@ async function run() {
         const ch = channels.find(c => c.id === id);
         if (!ch) return { meta: null };
 
-        // Applica mappatura EPG
         let epgId = ch.tvgId;
         if (epgId && EPG_TVG_ID_MAP[epgId]) {
             epgId = EPG_TVG_ID_MAP[epgId];
@@ -245,7 +244,7 @@ async function run() {
         const ch = channels.find(c => c.id === id);
         if (!ch) return { streams: [] };
 
-        console.log(`[Stream] ${ch.name} -> URL pre‑elaborato: ${ch.url}`);
+        console.log(`[Stream] ${ch.name} -> URL: ${ch.url}`);
         return {
             streams: [{
                 title: 'EasyProxy Stream',
@@ -256,6 +255,48 @@ async function run() {
     });
 
     const app = express();
+
+    // --- Route per il ridimensionamento dei loghi ---
+    app.get('/logo', async (req, res) => {
+        try {
+            const { url, name } = req.query;
+            if (!url) return res.status(400).send('Missing url parameter');
+
+            const response = await axios.get(url, {
+                responseType: 'arraybuffer',
+                timeout: 5000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (compatible; EasyProxyLogo/1.0)',
+                    'Referer': 'https://guidatv.sky.it'
+                }
+            });
+
+            const imageBuffer = Buffer.from(response.data);
+            const resized = await sharp(imageBuffer)
+                .resize(320, 180, {
+                    fit: 'contain',
+                    background: { r: 0, g: 0, b: 0, alpha: 1 }
+                })
+                .png()
+                .toBuffer();
+
+            res.set('Content-Type', 'image/png');
+            res.set('Cache-Control', 'public, max-age=86400');
+            res.send(resized);
+        } catch (error) {
+            console.error(`[Logo] Errore per ${req.query.url}: ${error.message}`);
+            // Fallback: genera placeholder con testo
+            const cleanName = req.query.name || 'Canale';
+            const placeholder = Buffer.from(`
+                <svg width="320" height="180" xmlns="http://www.w3.org/2000/svg">
+                    <rect fill="#1a1a1a" width="320" height="180"/>
+                    <text fill="#ffffff" font-family="Arial" font-size="20" x="160" y="90" text-anchor="middle" dominant-baseline="middle">${cleanName}</text>
+                </svg>`);
+            res.set('Content-Type', 'image/svg+xml');
+            res.send(placeholder);
+        }
+    });
+
     app.use((req, res, next) => {
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Headers', '*');
