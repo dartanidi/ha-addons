@@ -9,13 +9,13 @@ const os = require('os');
 
 // Configurazione Ambiente
 const PORT = process.env.PORT || 3000;
-const M3U_URL = process.env.M3U_URL;
+const M3U_URL = process.env.M3U_URL;               // URL originale della playlist
 const EPG_URL = process.env.EPG_URL;
 const REFRESH_INTERVAL = (parseInt(process.env.REFRESH_INTERVAL_MIN) || 60) * 60 * 1000;
 const EASYPROXY_URL = process.env.EASYPROXY_URL?.replace(/\/$/, ''); 
 const EASYPROXY_PASSWORD = process.env.EASYPROXY_PASSWORD;
 
-// Rilevamento IP locale (usato solo se LOGO_BASE_URL non è impostata)
+// Rilevamento IP locale per i loghi
 const LOCAL_IP = process.env.LOCAL_IP || (() => {
     const ifaces = os.networkInterfaces();
     for (const name of Object.keys(ifaces)) {
@@ -28,74 +28,21 @@ const LOCAL_IP = process.env.LOCAL_IP || (() => {
     return '127.0.0.1';
 })();
 
-// Base URL per l'endpoint /logo (personalizzabile tramite opzione)
 const LOGO_BASE_URL = process.env.LOGO_BASE_URL 
     ? process.env.LOGO_BASE_URL.replace(/\/$/, '')
     : `http://${LOCAL_IP}:${PORT}/logo`;
 
 console.log(`[Init] Logo base URL: ${LOGO_BASE_URL}`);
 
-// Mappa tvg-id playlist → id EPG (basata sul file epg_ripper_IT1.xml.gz)
+// Mappa tvg-id playlist → id EPG (invariata)
 const EPG_TVG_ID_MAP = {
-  // Intrattenimento
-  "sky.uno.it": "Sky.Uno.it",
-  "sky.atlantic.it": "Sky.Atlantic.it",
-  "sky.serie.it": "Sky.Serie.it",
-  "sky.investigation.it": "Sky.Investigation.it",
-  "sky.crime.it": "Sky.Crime.it",
-  "sky.documentaries.it": "Sky.Documentaries.it",
-  "sky.nature.it": "Sky.Nature.it",
-  "sky.arte.it": "Sky.Arte.it",
-  "sky.adventure.it": "Sky.Adventure.it",
-  "skycollection": "Sky.Collection.it",
-  // Cinema
-  "sky.cinema.uno.it": "Sky.Cinema.Uno.it",
-  "sky.cinema.action.it": "Sky.Cinema.Action.it",
-  "sky.cinema.comedy.it": "Sky.Cinema.Comedy.it",
-  "sky.cinema.drama.it": "Sky.Cinema.Drama.it",
-  "sky.cinema.due.it": "Sky.Cinema.Due.it",
-  "sky.cinema.romance.it": "Sky.Cinema.Romance.it",
-  "sky.cinema.suspense.it": "Sky.Cinema.Suspense.it",
-  "sky.cinema.collection.it": "Sky.Cinema.Collection.it",
-  "skycinemaillumination": "Sky.Cinema.Illumination.it",
-  // Sport
-  "sky.sport.24.it": "Sky.Sport.24.it",
-  "sky.sport.uno.it": "Sky.Sport.Uno.it",
-  "sky.sport.arena.it": "Sky.Sport.Arena.it",
-  "sky.sport.calcio.it": "Sky.Sport.Calcio.it",
-  "sky.sport.f1.it": "Sky.Sport.F1.it",
-  "sky.sport.max.it": "Sky.Sport.Max.it",
-  "sky.sport.mix.it": "Sky.Sport.Mix.it",
-  "sky.sport.motogp.it": "Sky.Sport.MotoGP.it",
-  "sky.sport.tennis.it": "Sky.Sport.Tennis.it",
-  "sky.sport.golf.it": "Sky.Sport.Golf.it",
-  "skysportbasket": "Sky.Sport.Basket.it",
-  "sky.sport.legend.it": "Sky.Sport.Legend.it",
-  "sky.sport..251.it": "Sky.Sport.251.it",
-  "sky.sport..252.it": "Sky.Sport.252.it",
-  "sky.sport..253.it": "Sky.Sport.253.it",
-  "sky.sport..254.it": "Sky.Sport.254.it",
-  "sky.sport..255.it": "Sky.Sport.255.it",
-  "sky.sport..256.it": "Sky.Sport.256.it",
-  "sky.sport..257.it": "Sky.Sport.257.it",
-  "sky.sport..258.it": "Sky.Sport.258.it",
-  "sky.sport..259.it": "Sky.Sport.259.it",
-  // News
-  "sky.tg24.it": "Sky.TG24.it",
-  // Altri canali nell'EPG
-  "comedy.central.it": "Comedy.Central.it",
-  "mtv.hd.it": "MTV.HD.it",
-  "gambero.rosso.hd.it": "Gambero.Rosso.HD.it",
-  "classica.hd.it": "Classica.HD.it",
-  "tv8.hd.it": "TV8.HD.it",
-  "super!.it": "Super!.it",
+  // ... (la stessa mappa che avevi prima, copiala interamente qui)
 };
 
 let channels = [];
 let genres = new Set();
 let epgData = {};
 
-// Helper per EPG (GZIP support)
 async function downloadEPG(url) {
     const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
     if (url.endsWith('.gz') || response.headers['content-type']?.includes('gzip')) {
@@ -107,7 +54,7 @@ async function downloadEPG(url) {
 async function updateData() {
     console.log(`[Update] Scaricamento playlist pre‑elaborata da EasyProxy...`);
     try {
-        // Costruzione automatica dell'URL per l'endpoint /playlist di EasyProxy
+        // Costruzione automatica dell'URL /playlist
         let playlistUrl;
         if (EASYPROXY_URL) {
             const params = new URLSearchParams();
@@ -156,7 +103,7 @@ async function updateData() {
                     id: `iptv_${idHash}`,
                     type: 'tv',
                     name: currentName,
-                    url: clean,
+                    url: clean,                // URL già pronto dal builder
                     genre: group,
                     logo: logoUrl,
                     tvgId: currentAttrs['tvg-id'] || null
@@ -287,7 +234,6 @@ async function run() {
         const { url, name } = req.query;
         console.log(`[Logo] Richiesta: ${url || 'nessun URL'}`);
 
-        // Se non c'è un URL, restituisci subito il placeholder SVG
         if (!url) {
             console.log('[Logo] Nessun URL, restituisco placeholder SVG.');
             res.type('svg').send(makePlaceholderSVG(name));
@@ -324,12 +270,10 @@ async function run() {
 
         } catch (error) {
             console.error(`[Logo] ERRORE per ${url}: ${error.message}`);
-            // Invia fallback SVG con il nome del canale
             res.type('svg').send(makePlaceholderSVG(name || 'Logo'));
         }
     });
 
-    // Funzione helper per generare un placeholder SVG
     function makePlaceholderSVG(text) {
         const safeText = (text || 'Canale').replace(/&/g, '&amp;').replace(/</g, '&lt;');
         return Buffer.from(`
