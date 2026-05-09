@@ -7,14 +7,79 @@ const zlib = require('zlib');
 
 // Configurazione Ambiente
 const PORT = process.env.PORT || 3000;
-const M3U_URL = process.env.M3U_URL;  // Ora punta al Playlist Builder
+const M3U_URL = process.env.M3U_URL;
 const EPG_URL = process.env.EPG_URL;
 const REFRESH_INTERVAL = (parseInt(process.env.REFRESH_INTERVAL_MIN) || 60) * 60 * 1000;
+const EASYPROXY_URL = process.env.EASYPROXY_URL?.replace(/\/$/, ''); 
+const EASYPROXY_PASSWORD = process.env.EASYPROXY_PASSWORD;
+
+// Mappa completa tvg-id playlist → id EPG (basata sul frammento XML fornito)
+const EPG_TVG_ID_MAP = {
+  // --- Intrattenimento ---
+  "sky.uno.it": "Sky.Uno.it",
+  "sky.atlantic.it": "Sky.Atlantic.it",
+  "sky.serie.it": "Sky.Serie.it",
+  "sky.investigation.it": "Sky.Investigation.it",
+  "sky.crime.it": "Sky.Crime.it",
+  "sky.documentaries.it": "Sky.Documentaries.it",
+  "sky.nature.it": "Sky.Nature.it",
+  "sky.arte.it": "Sky.Arte.it",
+  "sky.adventure.it": "Sky.Adventure.it",       // ipotizzando "Sky.Adventure.it"
+  "skycollection": "Sky.Collection.it",         // ipotizzando "Sky.Collection.it"
+  
+  // --- Cinema ---
+  "sky.cinema.uno.it": "Sky.Cinema.Uno.it",
+  "sky.cinema.action.it": "Sky.Cinema.Action.it",
+  "sky.cinema.comedy.it": "Sky.Cinema.Comedy.it",
+  "sky.cinema.drama.it": "Sky.Cinema.Drama.it",
+  "sky.cinema.due.it": "Sky.Cinema.Due.it",
+  "sky.cinema.romance.it": "Sky.Cinema.Romance.it",
+  "sky.cinema.suspense.it": "Sky.Cinema.Suspense.it",
+  "sky.cinema.collection.it": "Sky.Cinema.Collection.it",
+  "skycinemaillumination": "Sky.Cinema.Illumination.it",
+  
+  // --- Sport ---
+  "sky.sport.24.it": "Sky.Sport.24.it",
+  "sky.sport.uno.it": "Sky.Sport.Uno.it",
+  "sky.sport.arena.it": "Sky.Sport.Arena.it",
+  "sky.sport.calcio.it": "Sky.Sport.Calcio.it",
+  "sky.sport.f1.it": "Sky.Sport.F1.it",
+  "sky.sport.max.it": "Sky.Sport.Max.it",
+  "sky.sport.mix.it": "Sky.Sport.Mix.it",
+  "sky.sport.motogp.it": "Sky.Sport.MotoGP.it",
+  "sky.sport.tennis.it": "Sky.Sport.Tennis.it",
+  "sky.sport.golf.it": "Sky.Sport.Golf.it",
+  "skysportbasket": "Sky.Sport.Basket.it",
+  "sky.sport.legend.it": "Sky.Sport.Legend.it",
+  
+  // --- Numerali ---
+  "sky.sport..251.it": "Sky.Sport.251.it",
+  "sky.sport..252.it": "Sky.Sport.252.it",
+  "sky.sport..253.it": "Sky.Sport.253.it",
+  "sky.sport..254.it": "Sky.Sport.254.it",
+  "sky.sport..255.it": "Sky.Sport.255.it",
+  "sky.sport..256.it": "Sky.Sport.256.it",
+  "sky.sport..257.it": "Sky.Sport.257.it",
+  "sky.sport..258.it": "Sky.Sport.258.it",
+  "sky.sport..259.it": "Sky.Sport.259.it",
+  
+  // --- News ---
+  "sky.tg24.it": "Sky.TG24.it",
+  
+  // --- Canali bambini/altro trasmessi via Sky ma con id noto ---
+  "comedy.central.it": "Comedy.Central.it",
+  "mtv.hd.it": "MTV.HD.it",
+  "gambero.rosso.hd.it": "Gambero.Rosso.HD.it",
+  "classica.hd.it": "Classica.HD.it",
+  "tv8.hd.it": "TV8.HD.it",
+  "super!.it": "Super!.it",
+};
 
 let channels = [];
 let genres = new Set();
 let epgData = {};
 
+// Helper per EPG (GZIP support)
 async function downloadEPG(url) {
     const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
     if (url.endsWith('.gz') || response.headers['content-type']?.includes('gzip')) {
@@ -26,7 +91,18 @@ async function downloadEPG(url) {
 async function updateData() {
     console.log(`[Update] Scaricamento playlist pre‑elaborata da EasyProxy...`);
     try {
-        const { data } = await axios.get(M3U_URL, { timeout: 30000 });
+        // Costruzione automatica dell'URL per l'endpoint /playlist di EasyProxy
+        let playlistUrl;
+        if (EASYPROXY_URL) {
+            const params = new URLSearchParams();
+            params.set('url', M3U_URL);
+            if (EASYPROXY_PASSWORD) params.set('api_password', EASYPROXY_PASSWORD);
+            playlistUrl = `${EASYPROXY_URL}/playlist?${params.toString()}`;
+        } else {
+            playlistUrl = M3U_URL;
+        }
+
+        const { data } = await axios.get(playlistUrl, { timeout: 30000 });
         const lines = data.split('\n');
         const newChannels = [];
         const newGenres = new Set();
@@ -47,7 +123,6 @@ async function updateData() {
                 currentName = nameMatch ? nameMatch[1].trim() : 'Unknown';
                 currentAttrs = attrs;
             } else if (!clean.startsWith('#') && currentName) {
-                // L'URL è già completo (p.es. https://mfp.bizdevs.eu/proxy/manifest.m3u8?...)
                 const group = currentAttrs['group-title'] || 'Altro';
                 newGenres.add(group);
                 const idHash = crypto.createHash('md5').update(clean).digest('hex').substring(0, 10);
@@ -56,9 +131,9 @@ async function updateData() {
                     id: `iptv_${idHash}`,
                     type: 'tv',
                     name: currentName,
-                    url: clean,              // URL già pronto
+                    url: clean,
                     genre: group,
-                    logo: currentAttrs['tvg-logo'] || `https://via.placeholder.com/300x300/333333/FFFFFF?text=${encodeURIComponent(currentName)}`,
+                    logo: currentAttrs['tvg-logo'] || `https://via.placeholder.com/320x180/1a1a1a/ffffff?text=${encodeURIComponent(currentName.replace(/\[.*?\]/g, '').trim())}`,
                     tvgId: currentAttrs['tvg-id'] || null
                 });
                 currentName = '';
@@ -97,7 +172,7 @@ async function run() {
         id: 'org.iptv.easyproxy',
         version: '1.0.0',
         name: 'HA IPTV Proxy',
-        description: 'Live TV via EasyProxy (Playlist Builder)',
+        description: 'Live TV via EasyProxy con EPG e icone 16:9',
         resources: ['catalog', 'meta', 'stream'],
         types: ['tv'],
         catalogs: [{
@@ -126,7 +201,12 @@ async function run() {
         }
         const skip = extra && extra.skip ? parseInt(extra.skip) : 0;
         const metas = filtered.slice(skip, skip + 100).map(c => ({
-            id: c.id, type: 'tv', name: c.name, poster: c.logo, posterShape: 'square', genres: [c.genre]
+            id: c.id,
+            type: 'tv',
+            name: c.name,
+            poster: c.logo,
+            posterShape: 'landscape',
+            genres: [c.genre]
         }));
         return { metas };
     });
@@ -134,14 +214,29 @@ async function run() {
     builder.defineMetaHandler(async ({ id }) => {
         const ch = channels.find(c => c.id === id);
         if (!ch) return { meta: null };
-        let desc = `Categoria: ${ch.genre}`;
-        if (ch.tvgId && epgData[ch.tvgId] && epgData[ch.tvgId].length > 0) {
-            desc += `\n\nORA IN ONDA:\n${epgData[ch.tvgId][0].title}`;
-            if (epgData[ch.tvgId][0].desc) desc += `\n${epgData[ch.tvgId][0].desc}`;
+
+        // Applica mappatura EPG
+        let epgId = ch.tvgId;
+        if (epgId && EPG_TVG_ID_MAP[epgId]) {
+            epgId = EPG_TVG_ID_MAP[epgId];
         }
+
+        let desc = `Categoria: ${ch.genre}`;
+        if (epgId && epgData[epgId] && epgData[epgId].length > 0) {
+            desc += `\n\nORA IN ONDA:\n${epgData[epgId][0].title}`;
+            if (epgData[epgId][0].desc) desc += `\n${epgData[epgId][0].desc}`;
+        }
+
         return {
             meta: {
-                id: ch.id, type: 'tv', name: ch.name, poster: ch.logo, posterShape: 'square', background: ch.logo, description: desc, genres: [ch.genre]
+                id: ch.id,
+                type: 'tv',
+                name: ch.name,
+                poster: ch.logo,
+                posterShape: 'landscape',
+                background: ch.logo,
+                description: desc,
+                genres: [ch.genre]
             }
         };
     });
@@ -150,7 +245,6 @@ async function run() {
         const ch = channels.find(c => c.id === id);
         if (!ch) return { streams: [] };
 
-        // L'URL è già completo, lo restituiamo direttamente
         console.log(`[Stream] ${ch.name} -> URL pre‑elaborato: ${ch.url}`);
         return {
             streams: [{
