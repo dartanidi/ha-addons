@@ -15,7 +15,7 @@ const REFRESH_INTERVAL = (parseInt(process.env.REFRESH_INTERVAL_MIN) || 60) * 60
 const EASYPROXY_URL = process.env.EASYPROXY_URL?.replace(/\/$/, ''); 
 const EASYPROXY_PASSWORD = process.env.EASYPROXY_PASSWORD;
 
-// IP locale: se la variabile LOCAL_IP è impostata la usiamo, altrimenti auto-rileviamo
+// Rilevamento IP locale (usato solo se LOGO_BASE_URL non è impostata)
 const LOCAL_IP = process.env.LOCAL_IP || (() => {
     const ifaces = os.networkInterfaces();
     for (const name of Object.keys(ifaces)) {
@@ -28,11 +28,16 @@ const LOCAL_IP = process.env.LOCAL_IP || (() => {
     return '127.0.0.1';
 })();
 
-console.log(`[Init] IP locale per loghi: ${LOCAL_IP}`);
-console.log(`[Init] Porta: ${PORT}`);
+// Base URL per l'endpoint /logo (personalizzabile tramite opzione)
+const LOGO_BASE_URL = process.env.LOGO_BASE_URL 
+    ? process.env.LOGO_BASE_URL.replace(/\/$/, '')
+    : `http://${LOCAL_IP}:${PORT}/logo`;
 
-// Mappa tvg-id playlist → id EPG (invariata)
+console.log(`[Init] Logo base URL: ${LOGO_BASE_URL}`);
+
+// Mappa tvg-id playlist → id EPG (basata sul file epg_ripper_IT1.xml.gz)
 const EPG_TVG_ID_MAP = {
+  // Intrattenimento
   "sky.uno.it": "Sky.Uno.it",
   "sky.atlantic.it": "Sky.Atlantic.it",
   "sky.serie.it": "Sky.Serie.it",
@@ -43,6 +48,7 @@ const EPG_TVG_ID_MAP = {
   "sky.arte.it": "Sky.Arte.it",
   "sky.adventure.it": "Sky.Adventure.it",
   "skycollection": "Sky.Collection.it",
+  // Cinema
   "sky.cinema.uno.it": "Sky.Cinema.Uno.it",
   "sky.cinema.action.it": "Sky.Cinema.Action.it",
   "sky.cinema.comedy.it": "Sky.Cinema.Comedy.it",
@@ -52,6 +58,7 @@ const EPG_TVG_ID_MAP = {
   "sky.cinema.suspense.it": "Sky.Cinema.Suspense.it",
   "sky.cinema.collection.it": "Sky.Cinema.Collection.it",
   "skycinemaillumination": "Sky.Cinema.Illumination.it",
+  // Sport
   "sky.sport.24.it": "Sky.Sport.24.it",
   "sky.sport.uno.it": "Sky.Sport.Uno.it",
   "sky.sport.arena.it": "Sky.Sport.Arena.it",
@@ -73,7 +80,9 @@ const EPG_TVG_ID_MAP = {
   "sky.sport..257.it": "Sky.Sport.257.it",
   "sky.sport..258.it": "Sky.Sport.258.it",
   "sky.sport..259.it": "Sky.Sport.259.it",
+  // News
   "sky.tg24.it": "Sky.TG24.it",
+  // Altri canali nell'EPG
   "comedy.central.it": "Comedy.Central.it",
   "mtv.hd.it": "MTV.HD.it",
   "gambero.rosso.hd.it": "Gambero.Rosso.HD.it",
@@ -86,6 +95,7 @@ let channels = [];
 let genres = new Set();
 let epgData = {};
 
+// Helper per EPG (GZIP support)
 async function downloadEPG(url) {
     const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
     if (url.endsWith('.gz') || response.headers['content-type']?.includes('gzip')) {
@@ -95,8 +105,9 @@ async function downloadEPG(url) {
 }
 
 async function updateData() {
-    console.log(`[Update] Scaricamento playlist...`);
+    console.log(`[Update] Scaricamento playlist pre‑elaborata da EasyProxy...`);
     try {
+        // Costruzione automatica dell'URL per l'endpoint /playlist di EasyProxy
         let playlistUrl;
         if (EASYPROXY_URL) {
             const params = new URLSearchParams();
@@ -136,9 +147,9 @@ async function updateData() {
                 const cleanName = currentName.replace(/\[.*?\]/g, '').trim();
                 let logoUrl;
                 if (originalLogo) {
-                    logoUrl = `http://${LOCAL_IP}:${PORT}/logo?url=${encodeURIComponent(originalLogo)}&name=${encodeURIComponent(cleanName)}`;
+                    logoUrl = `${LOGO_BASE_URL}?url=${encodeURIComponent(originalLogo)}&name=${encodeURIComponent(cleanName)}`;
                 } else {
-                    logoUrl = `https://via.placeholder.com/320x180/1a1a1a/ffffff?text=${encodeURIComponent(cleanName)}`;
+                    logoUrl = `${LOGO_BASE_URL}?name=${encodeURIComponent(cleanName)}`;
                 }
                 
                 newChannels.push({
@@ -156,7 +167,7 @@ async function updateData() {
         }
         channels = newChannels;
         genres = newGenres;
-        console.log(`[M3U] Caricati ${channels.length} canali.`);
+        console.log(`[M3U] Caricati ${channels.length} canali pre‑elaborati.`);
     } catch (e) { console.error(`[M3U] Errore: ${e.message}`); }
 
     if (EPG_URL) {
@@ -258,7 +269,7 @@ async function run() {
         const ch = channels.find(c => c.id === id);
         if (!ch) return { streams: [] };
 
-        console.log(`[Stream] ${ch.name} -> ${ch.url}`);
+        console.log(`[Stream] ${ch.name} -> URL: ${ch.url}`);
         return {
             streams: [{
                 title: 'EasyProxy Stream',
@@ -270,15 +281,16 @@ async function run() {
 
     const app = express();
 
-    // ---------- ROTTA PER IL RIDIMENSIONAMENTO LOGHI ----------
+    // Endpoint per il ridimensionamento dei loghi
     app.get('/logo', async (req, res) => {
         const start = Date.now();
         const { url, name } = req.query;
-        console.log(`[Logo] Richiesta: ${url}`);
+        console.log(`[Logo] Richiesta: ${url || 'nessun URL'}`);
 
+        // Se non c'è un URL, restituisci subito il placeholder SVG
         if (!url) {
-            console.log('[Logo] Nessun URL, restituisco placeholder.');
-            res.type('svg').send(makePlaceholder(name));
+            console.log('[Logo] Nessun URL, restituisco placeholder SVG.');
+            res.type('svg').send(makePlaceholderSVG(name));
             return;
         }
 
@@ -311,18 +323,19 @@ async function run() {
             res.send(resized);
 
         } catch (error) {
-            console.error(`[Logo] ERRORE: ${error.message}`);
-            // Invia un placeholder SVG in caso di errore
-            res.type('svg').send(makePlaceholder(name || 'Logo'));
+            console.error(`[Logo] ERRORE per ${url}: ${error.message}`);
+            // Invia fallback SVG con il nome del canale
+            res.type('svg').send(makePlaceholderSVG(name || 'Logo'));
         }
     });
 
-    // Helper per generare SVG di fallback
-    function makePlaceholder(text) {
+    // Funzione helper per generare un placeholder SVG
+    function makePlaceholderSVG(text) {
+        const safeText = (text || 'Canale').replace(/&/g, '&amp;').replace(/</g, '&lt;');
         return Buffer.from(`
             <svg width="320" height="180" xmlns="http://www.w3.org/2000/svg">
                 <rect fill="#1a1a1a" width="320" height="180"/>
-                <text fill="#ffffff" font-family="Arial" font-size="20" x="160" y="90" text-anchor="middle" dominant-baseline="middle">${text.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</text>
+                <text fill="#ffffff" font-family="Arial" font-size="20" x="160" y="90" text-anchor="middle" dominant-baseline="middle">${safeText}</text>
             </svg>
         `);
     }
@@ -346,7 +359,7 @@ async function run() {
 
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`🚀 Addon in ascolto sulla porta ${PORT}`);
-        console.log(`[Logo] Endpoint: http://${LOCAL_IP}:${PORT}/logo`);
+        console.log(`[Logo] Endpoint base: ${LOGO_BASE_URL}`);
     });
 
     setInterval(async () => {
