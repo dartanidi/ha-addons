@@ -6,11 +6,10 @@ const crypto = require('crypto');
 const zlib = require('zlib');
 const sharp = require('sharp');
 const os = require('os');
-const { URL } = require('url');
 
 // Configurazione Ambiente
 const PORT = process.env.PORT || 3000;
-const M3U_URL = process.env.M3U_URL;
+const M3U_URL = process.env.M3U_URL;               // URL originale della playlist
 const EPG_URL = process.env.EPG_URL;
 const REFRESH_INTERVAL = (parseInt(process.env.REFRESH_INTERVAL_MIN) || 60) * 60 * 1000;
 const EASYPROXY_URL = process.env.EASYPROXY_URL?.replace(/\/$/, ''); 
@@ -35,7 +34,7 @@ const LOGO_BASE_URL = process.env.LOGO_BASE_URL
 
 console.log(`[Init] Logo base URL: ${LOGO_BASE_URL}`);
 
-// Mappa tvg‑id → EPG (completa come prima)
+// Mappa tvg-id → EPG (completa come prima)
 const EPG_TVG_ID_MAP = {
   "sky.uno.it": "Sky.Uno.it",
   "sky.atlantic.it": "Sky.Atlantic.it",
@@ -98,65 +97,26 @@ async function downloadEPG(url) {
     return response.data.toString('utf-8');
 }
 
-function getDomain(url) {
-    try {
-        const parsed = new URL(url);
-        return `${parsed.protocol}//${parsed.host}`;
-    } catch {
-        return '';
-    }
-}
-
-// Costruisce l'URL EasyProxy IDENTICO a quello del Playlist Builder
-function buildProxyUrl(channelUrl, clearkey = null) {
-    const params = new URLSearchParams();
-    params.set('url', channelUrl);  // il builder usa 'url', non 'd'
-    
-    if (EASYPROXY_PASSWORD) {
-        params.set('api_password', EASYPROXY_PASSWORD);
-    }
-    
-    if (clearkey) {
-        params.set('clearkey', clearkey);
-    }
-
-    const domain = getDomain(channelUrl);
-    if (domain) {
-        params.set('h_referer', `${domain}/`);
-        params.set('h_origin', domain);
-    }
-    params.set('h_user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    // Aggiungiamo gli header che il builder include e che il CDN Sky richiede
-    params.set('h_accept-language', 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7,it;q=0.6,fr;q=0.5');
-    params.set('h_accept-encoding', 'gzip, deflate, br, zstd');
-
-    return `${EASYPROXY_URL}/proxy/manifest.m3u8?${params.toString()}`;
-}
-
 async function updateData() {
-    console.log(`[Update] Scaricamento playlist originale...`);
+    console.log(`[Update] Chiamata al Playlist Builder di EasyProxy...`);
     try {
-        const { data } = await axios.get(M3U_URL, { timeout: 30000 });
+        // Costruzione automatica dell'URL del builder
+        const builderParams = new URLSearchParams();
+        builderParams.set('url', M3U_URL);
+        if (EASYPROXY_PASSWORD) builderParams.set('api_password', EASYPROXY_PASSWORD);
+        const builderUrl = `${EASYPROXY_URL}/playlist?${builderParams.toString()}`;
+
+        const { data } = await axios.get(builderUrl, { timeout: 30000 });
         const lines = data.split('\n');
         const newChannels = [];
         const newGenres = new Set();
         
-        let current = null;
-        let pendingOptions = {};
+        let currentName = '';
+        let currentAttrs = {};
 
         for (const line of lines) {
             const clean = line.trim();
             if (clean === '') continue;
-
-            if (clean.startsWith('#KODIPROP:') || clean.startsWith('#EXTVLCOPT:')) {
-                const optMatch = clean.match(/[#\w]+:(.*)=(.*)/);
-                if (optMatch) {
-                    const key = optMatch[1].toLowerCase();
-                    const val = optMatch[2];
-                    pendingOptions[key] = val;
-                }
-                continue;
-            }
 
             if (clean.startsWith('#EXTINF:')) {
                 const attrs = {};
@@ -164,21 +124,16 @@ async function updateData() {
                 let m;
                 while ((m = attrRegex.exec(clean)) !== null) attrs[m[1]] = m[2];
                 const nameMatch = clean.match(/,(.*)$/);
-                
-                current = { 
-                    name: nameMatch ? nameMatch[1].trim() : 'Unknown', 
-                    attrs: attrs,
-                    options: pendingOptions
-                };
-                pendingOptions = {};
-            } else if (!clean.startsWith('#') && current) {
-                current.url = clean;
-                const group = current.attrs['group-title'] || 'Altro';
+                currentName = nameMatch ? nameMatch[1].trim() : 'Unknown';
+                currentAttrs = attrs;
+            } else if (!clean.startsWith('#') && currentName) {
+                // L'URL è già completo e corretto (fornito dal builder)
+                const group = currentAttrs['group-title'] || 'Altro';
                 newGenres.add(group);
-                const idHash = crypto.createHash('md5').update(current.url).digest('hex').substring(0, 10);
+                const idHash = crypto.createHash('md5').update(clean).digest('hex').substring(0, 10);
                 
-                const originalLogo = current.attrs['tvg-logo'] || null;
-                const cleanName = current.name.replace(/\[.*?\]/g, '').trim();
+                const originalLogo = currentAttrs['tvg-logo'] || null;
+                const cleanName = currentName.replace(/\[.*?\]/g, '').trim();
                 let logoUrl;
                 if (originalLogo) {
                     logoUrl = `${LOGO_BASE_URL}?url=${encodeURIComponent(originalLogo)}&name=${encodeURIComponent(cleanName)}`;
@@ -186,33 +141,22 @@ async function updateData() {
                     logoUrl = `${LOGO_BASE_URL}?name=${encodeURIComponent(cleanName)}`;
                 }
                 
-                let clearkey = null;
-                if (current.options) {
-                    for (const [key, value] of Object.entries(current.options)) {
-                        if (key.includes('license_key') || key.includes('clearkey')) {
-                            clearkey = value.replace(/"/g, '');
-                        }
-                    }
-                }
-
-                const streamUrl = buildProxyUrl(current.url, clearkey);
-                
                 newChannels.push({
                     id: `iptv_${idHash}`,
                     type: 'tv',
-                    name: current.name,
-                    url: current.url,
-                    streamUrl: streamUrl,
+                    name: currentName,
+                    url: clean,                // URL già pronto dal builder
                     genre: group,
                     logo: logoUrl,
-                    tvgId: current.attrs['tvg-id'] || null
+                    tvgId: currentAttrs['tvg-id'] || null
                 });
-                current = null;
+                currentName = '';
+                currentAttrs = {};
             }
         }
         channels = newChannels;
         genres = newGenres;
-        console.log(`[M3U] Caricati ${channels.length} canali.`);
+        console.log(`[M3U] Caricati ${channels.length} canali dal builder.`);
     } catch (e) { console.error(`[M3U] Errore: ${e.message}`); }
 
     if (EPG_URL) {
@@ -242,7 +186,7 @@ async function run() {
         id: 'org.iptv.easyproxy',
         version: '1.0.0',
         name: 'HA IPTV Proxy',
-        description: 'Live TV via EasyProxy',
+        description: 'Live TV via EasyProxy (Playlist Builder automatico)',
         resources: ['catalog', 'meta', 'stream'],
         types: ['tv'],
         catalogs: [{
@@ -314,11 +258,11 @@ async function run() {
         const ch = channels.find(c => c.id === id);
         if (!ch) return { streams: [] };
 
-        console.log(`[Stream] ${ch.name} -> URL: ${ch.streamUrl}`);
+        console.log(`[Stream] ${ch.name} -> URL: ${ch.url}`);
         return {
             streams: [{
                 title: 'EasyProxy Stream',
-                url: ch.streamUrl,
+                url: ch.url,
                 behaviorHints: { notWebReady: true, bingeGroup: "tv" }
             }]
         };
