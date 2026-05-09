@@ -5,6 +5,7 @@ const xml2js = require('xml2js');
 const crypto = require('crypto');
 const zlib = require('zlib');
 const sharp = require('sharp');
+const os = require('os');
 
 // Configurazione Ambiente
 const PORT = process.env.PORT || 3000;
@@ -13,6 +14,22 @@ const EPG_URL = process.env.EPG_URL;
 const REFRESH_INTERVAL = (parseInt(process.env.REFRESH_INTERVAL_MIN) || 60) * 60 * 1000;
 const EASYPROXY_URL = process.env.EASYPROXY_URL?.replace(/\/$/, ''); 
 const EASYPROXY_PASSWORD = process.env.EASYPROXY_PASSWORD;
+
+// Rilevamento IP locale per l'endpoint logo
+// Se la variabile LOCAL_IP è impostata, la usa; altrimenti cerca il primo IP non loopback
+const LOCAL_IP = process.env.LOCAL_IP || (() => {
+    const ifaces = os.networkInterfaces();
+    for (const name of Object.keys(ifaces)) {
+        for (const iface of ifaces[name]) {
+            if (iface.family === 'IPv4' && !iface.internal) {
+                return iface.address;
+            }
+        }
+    }
+    return '127.0.0.1'; // fallback, tanto non funzionerà su client remoti
+})();
+
+console.log(`[Init] Rilevato IP locale: ${LOCAL_IP}`);
 
 // Mappa tvg-id playlist → id EPG
 const EPG_TVG_ID_MAP = {
@@ -116,13 +133,12 @@ async function updateData() {
                 newGenres.add(group);
                 const idHash = crypto.createHash('md5').update(clean).digest('hex').substring(0, 10);
                 
-                // Prepara URL del logo: se esiste un logo originale, usa il proxy locale
                 const originalLogo = currentAttrs['tvg-logo'] || null;
                 const cleanName = currentName.replace(/\[.*?\]/g, '').trim();
                 let logoUrl;
                 if (originalLogo) {
-                    // Usa il proxy di ridimensionamento locale (l'addon è esposto su porta 3000)
-                    logoUrl = `http://localhost:${PORT}/logo?url=${encodeURIComponent(originalLogo)}&name=${encodeURIComponent(cleanName)}`;
+                    // Usa l'IP locale invece di localhost
+                    logoUrl = `http://${LOCAL_IP}:${PORT}/logo?url=${encodeURIComponent(originalLogo)}&name=${encodeURIComponent(cleanName)}`;
                 } else {
                     logoUrl = `https://via.placeholder.com/320x180/1a1a1a/ffffff?text=${encodeURIComponent(cleanName)}`;
                 }
@@ -256,7 +272,7 @@ async function run() {
 
     const app = express();
 
-    // --- Route per il ridimensionamento dei loghi ---
+    // Route per il ridimensionamento dei loghi
     app.get('/logo', async (req, res) => {
         try {
             const { url, name } = req.query;
@@ -285,7 +301,6 @@ async function run() {
             res.send(resized);
         } catch (error) {
             console.error(`[Logo] Errore per ${req.query.url}: ${error.message}`);
-            // Fallback: genera placeholder con testo
             const cleanName = req.query.name || 'Canale';
             const placeholder = Buffer.from(`
                 <svg width="320" height="180" xmlns="http://www.w3.org/2000/svg">
@@ -316,6 +331,7 @@ async function run() {
 
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`🚀 Addon in ascolto sulla porta ${PORT}`);
+        console.log(`[Logo] Endpoint: http://${LOCAL_IP}:${PORT}/logo`);
     });
 
     setInterval(async () => {
