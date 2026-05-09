@@ -35,12 +35,55 @@ const LOGO_BASE_URL = process.env.LOGO_BASE_URL
 
 console.log(`[Init] Logo base URL: ${LOGO_BASE_URL}`);
 
-// Mappa tvg-id → EPG (completa come prima)
+// Mappa tvg‑id → EPG (completa come prima)
 const EPG_TVG_ID_MAP = {
   "sky.uno.it": "Sky.Uno.it",
   "sky.atlantic.it": "Sky.Atlantic.it",
   "sky.serie.it": "Sky.Serie.it",
-  // ... (completa con tutti i canali)
+  "sky.investigation.it": "Sky.Investigation.it",
+  "sky.crime.it": "Sky.Crime.it",
+  "sky.documentaries.it": "Sky.Documentaries.it",
+  "sky.nature.it": "Sky.Nature.it",
+  "sky.arte.it": "Sky.Arte.it",
+  "sky.adventure.it": "Sky.Adventure.it",
+  "skycollection": "Sky.Collection.it",
+  "sky.cinema.uno.it": "Sky.Cinema.Uno.it",
+  "sky.cinema.action.it": "Sky.Cinema.Action.it",
+  "sky.cinema.comedy.it": "Sky.Cinema.Comedy.it",
+  "sky.cinema.drama.it": "Sky.Cinema.Drama.it",
+  "sky.cinema.due.it": "Sky.Cinema.Due.it",
+  "sky.cinema.romance.it": "Sky.Cinema.Romance.it",
+  "sky.cinema.suspense.it": "Sky.Cinema.Suspense.it",
+  "sky.cinema.collection.it": "Sky.Cinema.Collection.it",
+  "skycinemaillumination": "Sky.Cinema.Illumination.it",
+  "sky.sport.24.it": "Sky.Sport.24.it",
+  "sky.sport.uno.it": "Sky.Sport.Uno.it",
+  "sky.sport.arena.it": "Sky.Sport.Arena.it",
+  "sky.sport.calcio.it": "Sky.Sport.Calcio.it",
+  "sky.sport.f1.it": "Sky.Sport.F1.it",
+  "sky.sport.max.it": "Sky.Sport.Max.it",
+  "sky.sport.mix.it": "Sky.Sport.Mix.it",
+  "sky.sport.motogp.it": "Sky.Sport.MotoGP.it",
+  "sky.sport.tennis.it": "Sky.Sport.Tennis.it",
+  "sky.sport.golf.it": "Sky.Sport.Golf.it",
+  "skysportbasket": "Sky.Sport.Basket.it",
+  "sky.sport.legend.it": "Sky.Sport.Legend.it",
+  "sky.sport..251.it": "Sky.Sport.251.it",
+  "sky.sport..252.it": "Sky.Sport.252.it",
+  "sky.sport..253.it": "Sky.Sport.253.it",
+  "sky.sport..254.it": "Sky.Sport.254.it",
+  "sky.sport..255.it": "Sky.Sport.255.it",
+  "sky.sport..256.it": "Sky.Sport.256.it",
+  "sky.sport..257.it": "Sky.Sport.257.it",
+  "sky.sport..258.it": "Sky.Sport.258.it",
+  "sky.sport..259.it": "Sky.Sport.259.it",
+  "sky.tg24.it": "Sky.TG24.it",
+  "comedy.central.it": "Comedy.Central.it",
+  "mtv.hd.it": "MTV.HD.it",
+  "gambero.rosso.hd.it": "Gambero.Rosso.HD.it",
+  "classica.hd.it": "Classica.HD.it",
+  "tv8.hd.it": "TV8.HD.it",
+  "super!.it": "Super!.it",
 };
 
 let channels = [];
@@ -64,9 +107,10 @@ function getDomain(url) {
     }
 }
 
+// Costruisce l'URL EasyProxy IDENTICO a quello del Playlist Builder
 function buildProxyUrl(channelUrl, clearkey = null) {
     const params = new URLSearchParams();
-    params.set('d', channelUrl);  // EasyProxy accetta sia 'd' che 'url'
+    params.set('url', channelUrl);  // il builder usa 'url', non 'd'
     
     if (EASYPROXY_PASSWORD) {
         params.set('api_password', EASYPROXY_PASSWORD);
@@ -76,20 +120,17 @@ function buildProxyUrl(channelUrl, clearkey = null) {
         params.set('clearkey', clearkey);
     }
 
-    // Header richiesti dal CDN
     const domain = getDomain(channelUrl);
     if (domain) {
         params.set('h_referer', `${domain}/`);
         params.set('h_origin', domain);
     }
     params.set('h_user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    // Aggiungiamo gli header che il builder include e che il CDN Sky richiede
+    params.set('h_accept-language', 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7,it;q=0.6,fr;q=0.5');
+    params.set('h_accept-encoding', 'gzip, deflate, br, zstd');
 
-    // 🔴 MODIFICA FONDAMENTALE: usa /proxy/stream.ts per i canali con DRM
-    if (clearkey) {
-        return `${EASYPROXY_URL}/proxy/stream.ts?${params.toString()}`;
-    } else {
-        return `${EASYPROXY_URL}/proxy/manifest.m3u8?${params.toString()}`;
-    }
+    return `${EASYPROXY_URL}/proxy/manifest.m3u8?${params.toString()}`;
 }
 
 async function updateData() {
