@@ -1,6 +1,7 @@
 FROM node:20-alpine
 
-RUN apk add --no-cache jq
+# Installa build tools e librerie per sharp
+RUN apk add --no-cache jq build-base vips-dev
 
 WORKDIR /usr/src/app
 
