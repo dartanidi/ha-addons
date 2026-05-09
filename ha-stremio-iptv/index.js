@@ -15,8 +15,7 @@ const REFRESH_INTERVAL = (parseInt(process.env.REFRESH_INTERVAL_MIN) || 60) * 60
 const EASYPROXY_URL = process.env.EASYPROXY_URL?.replace(/\/$/, ''); 
 const EASYPROXY_PASSWORD = process.env.EASYPROXY_PASSWORD;
 
-// Rilevamento IP locale per l'endpoint logo
-// Se la variabile LOCAL_IP è impostata, la usa; altrimenti cerca il primo IP non loopback
+// IP locale: se la variabile LOCAL_IP è impostata la usiamo, altrimenti auto-rileviamo
 const LOCAL_IP = process.env.LOCAL_IP || (() => {
     const ifaces = os.networkInterfaces();
     for (const name of Object.keys(ifaces)) {
@@ -26,12 +25,13 @@ const LOCAL_IP = process.env.LOCAL_IP || (() => {
             }
         }
     }
-    return '127.0.0.1'; // fallback, tanto non funzionerà su client remoti
+    return '127.0.0.1';
 })();
 
-console.log(`[Init] Rilevato IP locale: ${LOCAL_IP}`);
+console.log(`[Init] IP locale per loghi: ${LOCAL_IP}`);
+console.log(`[Init] Porta: ${PORT}`);
 
-// Mappa tvg-id playlist → id EPG
+// Mappa tvg-id playlist → id EPG (invariata)
 const EPG_TVG_ID_MAP = {
   "sky.uno.it": "Sky.Uno.it",
   "sky.atlantic.it": "Sky.Atlantic.it",
@@ -86,7 +86,6 @@ let channels = [];
 let genres = new Set();
 let epgData = {};
 
-// Helper per EPG (GZIP support)
 async function downloadEPG(url) {
     const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
     if (url.endsWith('.gz') || response.headers['content-type']?.includes('gzip')) {
@@ -96,7 +95,7 @@ async function downloadEPG(url) {
 }
 
 async function updateData() {
-    console.log(`[Update] Scaricamento playlist pre‑elaborata da EasyProxy...`);
+    console.log(`[Update] Scaricamento playlist...`);
     try {
         let playlistUrl;
         if (EASYPROXY_URL) {
@@ -137,7 +136,6 @@ async function updateData() {
                 const cleanName = currentName.replace(/\[.*?\]/g, '').trim();
                 let logoUrl;
                 if (originalLogo) {
-                    // Usa l'IP locale invece di localhost
                     logoUrl = `http://${LOCAL_IP}:${PORT}/logo?url=${encodeURIComponent(originalLogo)}&name=${encodeURIComponent(cleanName)}`;
                 } else {
                     logoUrl = `https://via.placeholder.com/320x180/1a1a1a/ffffff?text=${encodeURIComponent(cleanName)}`;
@@ -158,7 +156,7 @@ async function updateData() {
         }
         channels = newChannels;
         genres = newGenres;
-        console.log(`[M3U] Caricati ${channels.length} canali pre‑elaborati.`);
+        console.log(`[M3U] Caricati ${channels.length} canali.`);
     } catch (e) { console.error(`[M3U] Errore: ${e.message}`); }
 
     if (EPG_URL) {
@@ -188,7 +186,7 @@ async function run() {
         id: 'org.iptv.easyproxy',
         version: '1.0.0',
         name: 'HA IPTV Proxy',
-        description: 'Live TV via EasyProxy con EPG e loghi ridimensionati',
+        description: 'Live TV via EasyProxy con EPG e loghi',
         resources: ['catalog', 'meta', 'stream'],
         types: ['tv'],
         catalogs: [{
@@ -260,7 +258,7 @@ async function run() {
         const ch = channels.find(c => c.id === id);
         if (!ch) return { streams: [] };
 
-        console.log(`[Stream] ${ch.name} -> URL: ${ch.url}`);
+        console.log(`[Stream] ${ch.name} -> ${ch.url}`);
         return {
             streams: [{
                 title: 'EasyProxy Stream',
@@ -272,23 +270,32 @@ async function run() {
 
     const app = express();
 
-    // Route per il ridimensionamento dei loghi
+    // ---------- ROTTA PER IL RIDIMENSIONAMENTO LOGHI ----------
     app.get('/logo', async (req, res) => {
-        try {
-            const { url, name } = req.query;
-            if (!url) return res.status(400).send('Missing url parameter');
+        const start = Date.now();
+        const { url, name } = req.query;
+        console.log(`[Logo] Richiesta: ${url}`);
 
+        if (!url) {
+            console.log('[Logo] Nessun URL, restituisco placeholder.');
+            res.type('svg').send(makePlaceholder(name));
+            return;
+        }
+
+        try {
+            console.log(`[Logo] Scaricamento da: ${url}`);
             const response = await axios.get(url, {
                 responseType: 'arraybuffer',
                 timeout: 5000,
                 headers: {
-                    'User-Agent': 'Mozilla/5.0 (compatible; EasyProxyLogo/1.0)',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                     'Referer': 'https://guidatv.sky.it'
                 }
             });
 
-            const imageBuffer = Buffer.from(response.data);
-            const resized = await sharp(imageBuffer)
+            console.log(`[Logo] Scaricato ${response.data.length} byte in ${Date.now()-start}ms`);
+
+            const resized = await sharp(response.data)
                 .resize(320, 180, {
                     fit: 'contain',
                     background: { r: 0, g: 0, b: 0, alpha: 1 }
@@ -296,21 +303,29 @@ async function run() {
                 .png()
                 .toBuffer();
 
-            res.set('Content-Type', 'image/png');
-            res.set('Cache-Control', 'public, max-age=86400');
+            console.log(`[Logo] Ridimensionato in ${Date.now()-start}ms totali`);
+            res.set({
+                'Content-Type': 'image/png',
+                'Cache-Control': 'public, max-age=86400'
+            });
             res.send(resized);
+
         } catch (error) {
-            console.error(`[Logo] Errore per ${req.query.url}: ${error.message}`);
-            const cleanName = req.query.name || 'Canale';
-            const placeholder = Buffer.from(`
-                <svg width="320" height="180" xmlns="http://www.w3.org/2000/svg">
-                    <rect fill="#1a1a1a" width="320" height="180"/>
-                    <text fill="#ffffff" font-family="Arial" font-size="20" x="160" y="90" text-anchor="middle" dominant-baseline="middle">${cleanName}</text>
-                </svg>`);
-            res.set('Content-Type', 'image/svg+xml');
-            res.send(placeholder);
+            console.error(`[Logo] ERRORE: ${error.message}`);
+            // Invia un placeholder SVG in caso di errore
+            res.type('svg').send(makePlaceholder(name || 'Logo'));
         }
     });
+
+    // Helper per generare SVG di fallback
+    function makePlaceholder(text) {
+        return Buffer.from(`
+            <svg width="320" height="180" xmlns="http://www.w3.org/2000/svg">
+                <rect fill="#1a1a1a" width="320" height="180"/>
+                <text fill="#ffffff" font-family="Arial" font-size="20" x="160" y="90" text-anchor="middle" dominant-baseline="middle">${text.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</text>
+            </svg>
+        `);
+    }
 
     app.use((req, res, next) => {
         res.setHeader('Access-Control-Allow-Origin', '*');
