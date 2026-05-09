@@ -1,5 +1,5 @@
 name: "Stremio IPTV addon"
-version: "1.1.10"
+version: "1.1.11"
 slug: "stremio_iptv_addon"
 description: "Add-on Stremio per Live TV tramite M3U, EPG e routing su EasyProxy."
 arch:
@@ -19,6 +19,7 @@ options:
   refresh_interval_minutes: 60
   easyproxy_url: "http://192.168.1.xxx:8080"
   easyproxy_password: ""
+  logo_base_url: ""   # Nuova opzione
 
 schema:
   port: "port"
@@ -27,3 +28,4 @@ schema:
   refresh_interval_minutes: "int"
   easyproxy_url: "str"
   easyproxy_password: "password?"
+  logo_base_url: "str?"
