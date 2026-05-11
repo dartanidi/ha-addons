@@ -36,7 +36,7 @@ function isItalianChannel(name) {
     return !PAESI_STRANIERI.some(tag => n.includes(tag));
 }
 
-// ---------- Categorizzazione ----------
+// ---------- Categorizzazione (aggiunta LBA in Sport) ----------
 const CATEGORY_KEYWORDS = {
     "Rai": ["rai"],
     "Mediaset": ["twenty seven", "twentyseven", "mediaset", "italia 1", "italia 2", "canale 5", "la 5", "cine 34", "top crime", "iris", "focus", "rete 4"],
@@ -57,10 +57,19 @@ function getCategory(name) {
     return "Altro";
 }
 
-// ---------- Alias per differenze di denominazione (espandibile) ----------
+// ---------- Alias per canali che nell'EPG hanno nome diverso ----------
 const NAME_ALIASES = {
-    "sky sport basket": "sky sport nba",   // il nome EPG è "Sky Sport NBA"
-    // Aggiungi qui altre corrispondenze se necessario
+    "sky sport basket": "sky sport nba",
+    "sky sport 251": "sky sport 251",
+    "sky sport 252": "sky sport 252",
+    "sky sport 253": "sky sport 253",
+    "sky sport 254": "sky sport 254",
+    "sky sport 255": "sky sport 255",
+    "sky sport 256": "sky sport 256",
+    "sky sport 257": "sky sport 257",
+    "sky sport 258": "sky sport 258",
+    "sky sport 259": "sky sport 259",
+    // Aggiungi altri alias se necessario
 };
 
 // ---------- Utility ----------
@@ -71,15 +80,27 @@ function cleanNameForComparison(name) {
         .replace(/\s*\+?\d+\s*/g, '')
         .replace(/\bhd\b|\bfullhd\b|\b4k\b/gi, '')
         .replace(/\bmaratone\b/gi, '')
-        .replace(/[^a-z0-9À-ÿ\s]/g, '')
+        .replace(/[^a-z0-9À-ÿ\s]/g, '')   // rimuove punteggiatura
         .replace(/\s+/g, ' ')
         .trim();
+}
+
+function normalizeName(name) {
+    if (!name) return "";
+    let n = name.toLowerCase();
+    n = n.replace(/\s+/g, '');
+    n = n.replace(/\[.*?\]/g, '');
+    n = n.replace(/\(.*?\)/g, '');
+    n = n.replace(/\.it\b/g, '');
+    n = n.replace(/hd|fullhd/gi, '');
+    n = n.replace(/[^a-z0-9À-ÿ]/g, '');
+    return n;
 }
 
 // ---------- Stato globale ----------
 let channels = [];
 let genres = new Set();
-let epgMap = {};      // cleanName → { tvgId, logo, originalName }
+let epgMap = {};      // normalizedName → { tvgId, logo, originalName }
 let epgData = {};     // tvgId → programmes[]
 let refreshTimer = null;
 
@@ -107,8 +128,8 @@ async function updateEPG() {
                 const name = ch['display-name']?.[0];
                 const icon = ch.icon?.[0]?.$?.src || '';
                 if (id && name && typeof name === 'string') {
-                    const clean = cleanNameForComparison(name);
-                    newMap[clean] = { tvgId: id, logo: icon, originalName: name };
+                    const norm = normalizeName(name);
+                    newMap[norm] = { tvgId: id, logo: icon, originalName: name };
                 }
             }
         }
@@ -134,35 +155,44 @@ async function updateEPG() {
     }
 }
 
-// ---------- Ricerca EPG basata solo sul nome ----------
+// ---------- Ricerca EPG robusta (multi‑livello) ----------
 function findEpgInfo(channelName) {
     if (!epgMap || Object.keys(epgMap).length === 0) return {};
 
     const originalLower = channelName.toLowerCase().trim();
-    // Determina il nome da cercare nell'EPG (eventuale alias)
-    const searchName = NAME_ALIASES[originalLower] || originalLower;
-    const searchClean = cleanNameForComparison(searchName);
+    const searchFor = NAME_ALIASES[originalLower] || originalLower;
 
-    // 1. Match esatto del nome pulito
+    // Livello 1: match esatto con originalName di EPG (case‑insensitive)
     for (const entry of Object.values(epgMap)) {
-        const epgClean = cleanNameForComparison(entry.originalName);
-        if (epgClean === searchClean) {
+        if (entry.originalName.toLowerCase() === searchFor) {
             return { tvgId: entry.tvgId, logo: entry.logo };
         }
     }
 
-    // 2. Il nome pulito EPG contiene il nome pulito cercato
+    const searchClean = cleanNameForComparison(searchFor);
+    const searchNormalized = normalizeName(searchFor);
+
     for (const entry of Object.values(epgMap)) {
         const epgClean = cleanNameForComparison(entry.originalName);
-        if (epgClean.includes(searchClean) || searchClean.includes(epgClean)) {
+        const epgNormalized = normalizeName(entry.originalName);
+
+        // Livello 2: nomi puliti uguali
+        if (epgClean === searchClean || epgNormalized === searchNormalized) {
+            return { tvgId: entry.tvgId, logo: entry.logo };
+        }
+
+        // Livello 3: uno contiene l'altro (puliti)
+        if (epgClean.includes(searchClean) || searchClean.includes(epgClean) ||
+            epgNormalized.includes(searchNormalized) || searchNormalized.includes(epgNormalized)) {
             return { tvgId: entry.tvgId, logo: entry.logo };
         }
     }
 
-    // 3. Match esatto case‑insensitive del nome originale (senza pulizia)
-    const originalSearch = searchName.toLowerCase();
+    // Livello 4: cercasi solo per parole chiave (es. "sky cinema" trova "Sky Cinema Uno HD")
+    const searchWords = searchClean.split(' ').filter(w => w.length > 2);
     for (const entry of Object.values(epgMap)) {
-        if (entry.originalName.toLowerCase() === originalSearch) {
+        const epgWords = cleanNameForComparison(entry.originalName).split(' ');
+        if (searchWords.every(sw => epgWords.some(ew => ew.includes(sw) || sw.includes(ew)))) {
             return { tvgId: entry.tvgId, logo: entry.logo };
         }
     }
@@ -224,10 +254,10 @@ async function buildChannels() {
                 const streamUrl = buildStreamUrl(cleanUrl, clearkeys);
 
                 const epgInfo = findEpgInfo(name);
-                const tvgId = epgInfo.tvgId || cleanNameForComparison(name);  // fallback se non trovato
+                const tvgId = epgInfo.tvgId || normalizeName(name);
                 let logo = epgInfo.logo || '';
 
-                // Placeholder Sky se necessario
+                // Placeholder Sky per canali Sky senza logo
                 if (!logo && name.toLowerCase().startsWith('sky ')) {
                     logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
                 }
@@ -246,7 +276,7 @@ async function buildChannels() {
                     tvgId: tvgId
                 });
                 newGenres.add(category);
-                uaznaoNormalizedNames.add(cleanNameForComparison(name));
+                uaznaoNormalizedNames.add(normalizeName(name));
             }
             console.log(`[Uaznao] ${newChannels.length} canali italiani.`);
         } catch (e) { console.error(`[Uaznao] Errore: ${e.message}`); }
@@ -261,7 +291,7 @@ async function buildChannels() {
                 const name = ch.name;
                 if (!isItalianChannel(name)) continue;
 
-                if (uaznaoNormalizedNames.has(cleanNameForComparison(name))) continue;
+                if (uaznaoNormalizedNames.has(normalizeName(name))) continue;
 
                 const category = getCategory(name);
                 const urlToUse = (ch.geoblock?.url && ch.geoblock.url !== true) ? ch.geoblock.url : ch.url;
@@ -273,7 +303,7 @@ async function buildChannels() {
                 const streamUrl = buildStreamUrl(urlToUse, clearkeys, true);
 
                 const epgInfo = findEpgInfo(name);
-                const tvgId = epgInfo.tvgId || cleanNameForComparison(name);
+                const tvgId = epgInfo.tvgId || normalizeName(name);
                 let logo = epgInfo.logo || '';
 
                 if (!logo && name.toLowerCase().startsWith('sky ')) {
