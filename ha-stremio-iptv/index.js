@@ -32,7 +32,7 @@ console.log(`[Init] Logo endpoint: ${LOGO_BASE_URL}`);
 const CATEGORY_KEYWORDS = {
     "Rai": ["rai"],
     "Mediaset": ["twenty seven", "twentyseven", "mediaset", "italia 1", "italia 2", "canale 5", "la 5", "cine 34", "top crime", "iris", "focus", "rete 4"],
-    "Sport": ["inter", "milan", "lazio", "calcio", "tennis", "sport", "sportitalia", "trsport", "sports", "super tennis", "supertennis", "dazn", "eurosport", "sky sport", "rai sport", "eventi"],
+    "Sport": ["inter", "milan", "lazio", "calcio", "tennis", "sport", "sportitalia", "trsport", "sports", "super tennis", "supertennis", "dazn", "eurosport", "sky sport", "rai sport", "eventi", "lba"],
     "Film - Serie TV": ["crime", "primafila", "cinema", "movie", "film", "serie", "hbo", "fox", "rakuten", "atlantic"],
     "News": ["news", "tg", "rai news", "sky tg", "tgcom", "euronews"],
     "Bambini": ["frisbee", "super!", "fresbee", "k2", "cartoon", "boing", "nick", "disney", "baby", "rai yoyo", "cartoonito", "kids"],
@@ -176,7 +176,7 @@ async function buildChannels() {
                 newChannels.push({
                     id: `iptv_${idHash}`,
                     type: 'tv',
-                    name: `${name} [UAZNAO]`,
+                    name: `${name}`,
                     url: streamUrl,
                     genre: category,
                     logo: logoUrl,
@@ -214,7 +214,7 @@ async function buildChannels() {
                 newChannels.push({
                     id: `iptv_${idHash}`,
                     type: 'tv',
-                    name: `${name} [ZAPPR]`,
+                    name: `${name}`,
                     url: streamUrl,
                     genre: category,
                     logo: logoUrl,
@@ -305,8 +305,8 @@ async function run() {
 
     const manifest = {
         id: 'org.iptv.arta',
-        version: '1.0.0',
-        name: 'ARTA LIVETV',
+        version: '2.0.0',
+        name: 'Arta LiveTV',
         description: 'Streaming Live TV con DRM',
         resources: ['catalog', 'meta', 'stream'],
         types: ['tv'],
