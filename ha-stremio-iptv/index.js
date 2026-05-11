@@ -28,11 +28,19 @@ const LOCAL_IP = process.env.LOCAL_IP || (() => {
 const LOGO_BASE_URL = process.env.LOGO_BASE_URL?.replace(/\/$/, '') || `http://${LOCAL_IP}:${PORT}/logo`;
 console.log(`[Init] Logo endpoint: ${LOGO_BASE_URL}`);
 
+// ---------- Filtro canali italiani (come script Python) ----------
+const PAESI_STRANIERI = ["[inglese]", "[hr]", "[nl]", "[pl]", "[cz]", "[de]", "[fr]", "[es]", "[pt]"];
+
+function isItalianChannel(name) {
+    const n = name.toLowerCase();
+    return !PAESI_STRANIERI.some(tag => n.includes(tag));
+}
+
 // ---------- Categorizzazione ----------
 const CATEGORY_KEYWORDS = {
     "Rai": ["rai"],
     "Mediaset": ["twenty seven", "twentyseven", "mediaset", "italia 1", "italia 2", "canale 5", "la 5", "cine 34", "top crime", "iris", "focus", "rete 4"],
-    "Sport": ["inter", "milan", "lazio", "calcio", "tennis", "sport", "sportitalia", "trsport", "sports", "super tennis", "supertennis", "dazn", "eurosport", "sky sport", "rai sport", "eventi", "lba"],
+    "Sport": ["inter", "milan", "lazio", "calcio", "tennis", "sport", "sportitalia", "trsport", "sports", "super tennis", "supertennis", "dazn", "eurosport", "sky sport", "rai sport", "eventi"],
     "Film - Serie TV": ["crime", "primafila", "cinema", "movie", "film", "serie", "hbo", "fox", "rakuten", "atlantic"],
     "News": ["news", "tg", "rai news", "sky tg", "tgcom", "euronews"],
     "Bambini": ["frisbee", "super!", "fresbee", "k2", "cartoon", "boing", "nick", "disney", "baby", "rai yoyo", "cartoonito", "kids"],
@@ -161,6 +169,9 @@ async function buildChannels() {
             const { data } = await axios.get(UAZNAO_URL, { timeout: 30000 });
             for (const item of data) {
                 const name = item.channelName;
+                // Filtra solo canali italiani
+                if (!isItalianChannel(name)) continue;
+
                 const category = getCategory(name);
                 const clearkey = extractClearkeyUaznao(item.url);
                 const cleanUrl = item.url.replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
@@ -176,7 +187,7 @@ async function buildChannels() {
                 newChannels.push({
                     id: `iptv_${idHash}`,
                     type: 'tv',
-                    name: `${name}`,
+                    name: name,   // senza [UAZNAO]
                     url: streamUrl,
                     genre: category,
                     logo: logoUrl,
@@ -184,7 +195,7 @@ async function buildChannels() {
                 });
                 newGenres.add(category);
             }
-            console.log(`[Uaznao] ${data.length} canali`);
+            console.log(`[Uaznao] ${newChannels.length} canali italiani caricati.`);
         } catch (e) {
             console.error(`[Uaznao] Errore: ${e.message}`);
         }
@@ -197,6 +208,9 @@ async function buildChannels() {
             const { data } = await axios.get(ZAPPR_URL, { timeout: 30000 });
             for (const ch of (data.channels || [])) {
                 const name = ch.name;
+                // Filtra solo canali italiani
+                if (!isItalianChannel(name)) continue;
+
                 const category = getCategory(name);
                 const urlToUse = (ch.geoblock?.url && ch.geoblock.url !== true) ? ch.geoblock.url : ch.url;
                 if (!urlToUse || urlToUse.startsWith('zappr://')) continue;
@@ -214,7 +228,7 @@ async function buildChannels() {
                 newChannels.push({
                     id: `iptv_${idHash}`,
                     type: 'tv',
-                    name: `${name}`,
+                    name: name,   // senza [ZAPPR]
                     url: streamUrl,
                     genre: category,
                     logo: logoUrl,
@@ -222,7 +236,7 @@ async function buildChannels() {
                 });
                 newGenres.add(category);
             }
-            console.log(`[Zappr] ${data.channels?.length || 0} canali`);
+            console.log(`[Zappr] ${newChannels.length} canali italiani caricati.`);
         } catch (e) {
             console.error(`[Zappr] Errore: ${e.message}`);
         }
@@ -230,7 +244,7 @@ async function buildChannels() {
 
     channels = newChannels;
     genres = newGenres;
-    console.log(`[Totale] ${channels.length} canali`);
+    console.log(`[Totale] ${channels.length} canali.`);
 }
 
 // ---------- Scheduling intelligente ----------
@@ -274,15 +288,13 @@ async function updateChannels() {
     scheduleNextRefresh(uaznaoData);
 }
 
-// ---------- EPG giornaliero (timezone consapevole) ----------
+// ---------- EPG giornaliero (timezone consapevole, 02:00 UTC) ----------
 function scheduleEPG() {
     if (!EPG_URL) return;
 
-    // Calcola la prossima occorrenza delle 02:00 UTC
     const now = new Date();
     const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 2, 0, 0, 0));
     if (next <= now) {
-        // Se l'ora UTC corrente è già passata, andiamo a domani
         next.setUTCDate(next.getUTCDate() + 1);
     }
 
@@ -291,7 +303,7 @@ function scheduleEPG() {
 
     setTimeout(() => {
         updateEPG();
-        scheduleEPG(); // riprogramma
+        scheduleEPG();
     }, delay);
 }
 
@@ -381,7 +393,7 @@ async function run() {
     app.get('/manifest.json', (req, res) => { const m = builder.getInterface().manifest; m.catalogs[0].extra[0].options = Array.from(genres).sort(); res.json(m); });
     iface = builder.getInterface();
     app.use('/', getRouter(iface));
-    app.listen(PORT, '0.0.0.0', () => console.log(`🚀 ARTA LIVETV sulla porta ${PORT}`));
+    app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Arta LiveTV sulla porta ${PORT}`));
 }
 
 run();
