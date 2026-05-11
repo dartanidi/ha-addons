@@ -57,7 +57,7 @@ function getCategory(name) {
     return "Altro";
 }
 
-// ---------- Mappa statica canali Sky (nome → tvg‑id e logo) ----------
+// ---------- Mappa statica canali Sky ----------
 const SKY_CHANNEL_MAP = {
     "Sky Uno": { tvgId: "Sky.Uno.it", logo: "https://guidatv.sky.it/logo/477skyuno_Light_Fit.png?checksum=cd37fd56-01f7-443e-a62d-ff99bf4c1b1c?tr=n-logo_80" },
     "Sky Atlantic": { tvgId: "Sky.Atlantic.it", logo: "https://guidatv.sky.it/logo/226skyatlantic_Light_Fit.png?checksum=55e0b430-8ac2-482a-80eb-d79e3678ea49?tr=n-logo_80" },
@@ -67,7 +67,6 @@ const SKY_CHANNEL_MAP = {
     "Sky Arte": { tvgId: "Sky.Arte.it", logo: "https://guidatv.sky.it/logo/74skyarte_Light_Fit.png?checksum=e7a7ddb0-6afa-42c8-93d8-b2a4f5c726e1?tr=n-logo_80" },
     "Sky Documentaries": { tvgId: "Sky.Documentaries.it", logo: "https://guidatv.sky.it/logo/697skydocumentaries_Light_Fit.png?checksum=53245dbe-0b73-4190-b492-376dc7d53d2d?tr=n-logo_80" },
     "Sky Nature": { tvgId: "Sky.Nature.it", logo: "https://guidatv.sky.it/logo/695skynature_Light_Fit.png?checksum=6a2c90be-bac2-4622-af95-39ec6b75e3b4?tr=n-logo_80" },
-    // Aggiungi altri canali Sky se necessario
 };
 
 // ---------- Utility ----------
@@ -144,30 +143,33 @@ async function updateEPG() {
 function extractClearkeyUaznao(url) {
     try {
         const m = url.match(/ck=([^&\s]+)/);
-        if (!m) return null;
+        if (!m) return [];
         const decoded = Buffer.from(m[1], 'base64').toString('utf-8');
         const parts = decoded.split(':');
-        if (parts.length >= 2) return [`${parts[0]}:${parts[1]}`];  // array con una chiave
+        if (parts.length >= 2) return [`${parts[0]}:${parts[1]}`];
     } catch {}
     return [];
 }
 
 function extractClearkeyZappr(details) {
     if (!details) return [];
-    if (typeof details === 'string') return [details];               // singola chiave
+    if (typeof details === 'string') return [details];
     if (typeof details === 'object') {
-        return Object.entries(details).map(([k, v]) => `${k}:${v}`); // chiavi multiple
+        return Object.entries(details).map(([k, v]) => `${k}:${v}`);
     }
     return [];
 }
 
-// ---------- Costruzione URL EasyProxy (supporta più clearkey) ----------
-function buildStreamUrl(streamUrl, clearkeys) {
+// ---------- Costruzione URL EasyProxy (supporta disable_ssl) ----------
+function buildStreamUrl(streamUrl, clearkeys, disableSsl = false) {
     const params = new URLSearchParams();
     params.set('url', streamUrl);
     if (EASYPROXY_PASSWORD) params.set('api_password', EASYPROXY_PASSWORD);
     for (const ck of clearkeys) {
         params.append('clearkey', ck);
+    }
+    if (disableSsl) {
+        params.set('disable_ssl', '1');
     }
     return `${EASYPROXY_URL}/proxy/manifest.m3u8?${params.toString()}`;
 }
@@ -189,9 +191,8 @@ async function buildChannels() {
                 const category = getCategory(name);
                 const clearkeys = extractClearkeyUaznao(item.url);
                 const cleanUrl = item.url.replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
-                const streamUrl = buildStreamUrl(cleanUrl, clearkeys);
+                const streamUrl = buildStreamUrl(cleanUrl, clearkeys);   // SSL ok
 
-                // Priorità: mappa Sky → epgMap → nome normalizzato
                 const skyInfo = SKY_CHANNEL_MAP[name] || {};
                 const epgInfo = epgMap[normalizeName(name)] || {};
                 const tvgId = skyInfo.tvgId || epgInfo.tvgId || normalizeName(name);
@@ -231,7 +232,7 @@ async function buildChannels() {
                 if (!urlToUse || urlToUse.startsWith('zappr://')) continue;
 
                 const clearkeys = extractClearkeyZappr(ch.licensedetails);
-                const streamUrl = buildStreamUrl(urlToUse, clearkeys);
+                const streamUrl = buildStreamUrl(urlToUse, clearkeys, true);  // SSL bypass per Zappr
 
                 const skyInfo = SKY_CHANNEL_MAP[name] || {};
                 const epgInfo = epgMap[normalizeName(name)] || {};
