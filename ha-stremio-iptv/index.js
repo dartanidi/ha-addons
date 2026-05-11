@@ -9,7 +9,7 @@ const os = require('os');
 
 // ---------- Configurazione ----------
 const PORT = process.env.PORT || 3000;
-const UAZNAO_URL = process.env.UAZNAO_URL;                          // URL JSON Uaznao
+const UAZNAO_URL = process.env.UAZNAO_URL;
 const ZAPPR_URL = process.env.ZAPPR_URL || 'https://channels.zappr.stream/it/dtt/national.json';
 const EPG_URL = process.env.EPG_URL;
 const REFRESH_INTERVAL_MIN = parseInt(process.env.REFRESH_INTERVAL_MIN) || 60;
@@ -28,11 +28,11 @@ const LOCAL_IP = process.env.LOCAL_IP || (() => {
 const LOGO_BASE_URL = process.env.LOGO_BASE_URL?.replace(/\/$/, '') || `http://${LOCAL_IP}:${PORT}/logo`;
 console.log(`[Init] Logo endpoint: ${LOGO_BASE_URL}`);
 
-// ---------- Categorizzazione (come script Python) ----------
+// ---------- Categorizzazione ----------
 const CATEGORY_KEYWORDS = {
     "Rai": ["rai"],
     "Mediaset": ["twenty seven", "twentyseven", "mediaset", "italia 1", "italia 2", "canale 5", "la 5", "cine 34", "top crime", "iris", "focus", "rete 4"],
-    "Sport": ["inter", "milan", "lazio", "calcio", "tennis", "sport", "sportitalia", "trsport", "sports", "super tennis", "supertennis", "dazn", "eurosport", "sky sport", "rai sport", "eventi", "lba"],
+    "Sport": ["inter", "milan", "lazio", "calcio", "tennis", "sport", "sportitalia", "trsport", "sports", "super tennis", "supertennis", "dazn", "eurosport", "sky sport", "rai sport", "eventi"],
     "Film - Serie TV": ["crime", "primafila", "cinema", "movie", "film", "serie", "hbo", "fox", "rakuten", "atlantic"],
     "News": ["news", "tg", "rai news", "sky tg", "tgcom", "euronews"],
     "Bambini": ["frisbee", "super!", "fresbee", "k2", "cartoon", "boing", "nick", "disney", "baby", "rai yoyo", "cartoonito", "kids"],
@@ -133,7 +133,7 @@ function extractClearkeyUaznao(url) {
 
 function extractClearkeyZappr(details) {
     if (!details) return null;
-    if (typeof details === 'string') return details;               // già "kid:key"
+    if (typeof details === 'string') return details;
     if (typeof details === 'object') {
         return Object.entries(details).map(([k, v]) => `${k}:${v}`).join(',');
     }
@@ -176,7 +176,7 @@ async function buildChannels() {
                 newChannels.push({
                     id: `iptv_${idHash}`,
                     type: 'tv',
-                    name: `${name}`,
+                    name: `${name} [UAZNAO]`,
                     url: streamUrl,
                     genre: category,
                     logo: logoUrl,
@@ -214,7 +214,7 @@ async function buildChannels() {
                 newChannels.push({
                     id: `iptv_${idHash}`,
                     type: 'tv',
-                    name: `${name}`,
+                    name: `${name} [ZAPPR]`,
                     url: streamUrl,
                     genre: category,
                     logo: logoUrl,
@@ -253,9 +253,8 @@ function scheduleNextRefresh(uaznaoData) {
     let delayMs;
 
     if (nextExpiry) {
-        // Refresh 5 minuti prima della scadenza più vicina
         const target = nextExpiry.getTime() - 5 * 60 * 1000;
-        delayMs = Math.max(60_000, target - Date.now()); // almeno 1 minuto
+        delayMs = Math.max(60_000, target - Date.now());
         console.log(`[Scheduler] Prossima scadenza: ${nextExpiry.toISOString()}, refresh tra ${Math.round(delayMs / 60000)} min`);
     } else {
         delayMs = REFRESH_INTERVAL_MIN * 60 * 1000;
@@ -271,21 +270,28 @@ async function updateChannels() {
     if (UAZNAO_URL) {
         try { uaznaoData = (await axios.get(UAZNAO_URL, { timeout: 30000 })).data; } catch {}
     }
-    await buildChannels();   // usa epgMap già in memoria
-    await updateEPG();       // refresh EPG (verrà fatto anche giornalmente)
+    await buildChannels();
     scheduleNextRefresh(uaznaoData);
 }
 
-// ---------- EPG giornaliero ----------
+// ---------- EPG giornaliero (timezone consapevole) ----------
 function scheduleEPG() {
+    if (!EPG_URL) return;
+
+    // Calcola la prossima occorrenza delle 02:00 UTC
     const now = new Date();
-    const next = new Date(now);
-    next.setHours(24, 1, 0, 0); // domani alle 00:01
-    const delay = next - now;
-    console.log(`[EPG] Prossimo aggiornamento programmi tra ${Math.round(delay / 60000)} min`);
+    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 2, 0, 0, 0));
+    if (next <= now) {
+        // Se l'ora UTC corrente è già passata, andiamo a domani
+        next.setUTCDate(next.getUTCDate() + 1);
+    }
+
+    const delay = next.getTime() - now.getTime();
+    console.log(`[EPG] Prossimo aggiornamento programmi alle ${next.toISOString()} (tra ${Math.round(delay / 60000)} min)`);
+
     setTimeout(() => {
         updateEPG();
-        scheduleEPG(); // riprogramma per il giorno dopo
+        scheduleEPG(); // riprogramma
     }, delay);
 }
 
@@ -334,7 +340,6 @@ async function run() {
         const ch = channels.find(c => c.id === id);
         if (!ch) return { meta: null };
 
-        // Cerca programma corrente
         let desc = `Categoria: ${ch.genre}`;
         const programmes = epgData[ch.tvgId];
         if (programmes?.length) {
