@@ -85,7 +85,7 @@ function normalizeName(name) {
 // ---------- Stato globale ----------
 let channels = [];
 let genres = new Set();
-let epgMap = {};      // normalized_name → { tvgId, logo }
+let epgMap = {};      // normalizedName → { tvgId, logo, originalName }
 let epgData = {};     // tvgId → programmes[]
 let refreshTimer = null;
 
@@ -113,7 +113,8 @@ async function updateEPG() {
                 const name = ch['display-name']?.[0];
                 const icon = ch.icon?.[0]?.$?.src || '';
                 if (id && name) {
-                    newMap[normalizeName(name)] = { tvgId: id, logo: icon };
+                    const norm = normalizeName(name);
+                    newMap[norm] = { tvgId: id, logo: icon, originalName: name };
                 }
             }
         }
@@ -139,6 +140,32 @@ async function updateEPG() {
     }
 }
 
+// ---------- Ricerca intelligente nell'EPG ----------
+function findEpgInfo(channelName) {
+    if (!epgMap || Object.keys(epgMap).length === 0) return {};
+    const lowerName = channelName.toLowerCase().trim();
+    // 1. Corrispondenza esatta con originalName
+    for (const entry of Object.values(epgMap)) {
+        if (entry.originalName.toLowerCase() === lowerName) {
+            return { tvgId: entry.tvgId, logo: entry.logo };
+        }
+    }
+    // 2. Corrispondenza tramite normalizeName
+    const norm = normalizeName(channelName);
+    for (const entry of Object.values(epgMap)) {
+        if (normalizeName(entry.originalName) === norm) {
+            return { tvgId: entry.tvgId, logo: entry.logo };
+        }
+    }
+    // 3. L'originalName contiene il nome del canale (es. "Rai 1 HD" contiene "Rai 1")
+    for (const entry of Object.values(epgMap)) {
+        if (entry.originalName.toLowerCase().includes(lowerName)) {
+            return { tvgId: entry.tvgId, logo: entry.logo };
+        }
+    }
+    return {};
+}
+
 // ---------- Estrazione clearkey ----------
 function extractClearkeyUaznao(url) {
     try {
@@ -152,34 +179,33 @@ function extractClearkeyUaznao(url) {
 }
 
 function extractClearkeyZappr(details) {
-    if (!details) return [];
+    if (!details) return null;
     if (typeof details === 'string') return [details];
     if (typeof details === 'object') {
         return Object.entries(details).map(([k, v]) => `${k}:${v}`);
     }
-    return [];
+    return null;
 }
 
-// ---------- Costruzione URL EasyProxy (supporta disable_ssl) ----------
+// ---------- Costruzione URL EasyProxy ----------
 function buildStreamUrl(streamUrl, clearkeys, disableSsl = false) {
     const params = new URLSearchParams();
     params.set('url', streamUrl);
     if (EASYPROXY_PASSWORD) params.set('api_password', EASYPROXY_PASSWORD);
-    for (const ck of clearkeys) {
-        params.append('clearkey', ck);
+    if (clearkeys) {
+        for (const ck of clearkeys) params.append('clearkey', ck);
     }
-    if (disableSsl) {
-        params.set('disable_ssl', '1');
-    }
+    if (disableSsl) params.set('disable_ssl', '1');
     return `${EASYPROXY_URL}/proxy/manifest.m3u8?${params.toString()}`;
 }
 
-// ---------- Fetch & merge ----------
+// ---------- Fetch & merge (con priorità Uaznao) ----------
 async function buildChannels() {
     const newChannels = [];
     const newGenres = new Set();
+    const uaznaoNormalizedNames = new Set();
 
-    // --- Uaznao ---
+    // --- Uaznao (priorità massima) ---
     if (UAZNAO_URL) {
         console.log('[Uaznao] Download...');
         try {
@@ -191,10 +217,11 @@ async function buildChannels() {
                 const category = getCategory(name);
                 const clearkeys = extractClearkeyUaznao(item.url);
                 const cleanUrl = item.url.replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
-                const streamUrl = buildStreamUrl(cleanUrl, clearkeys);   // SSL ok
+                const streamUrl = buildStreamUrl(cleanUrl, clearkeys);
 
+                // Priorità: mappa Sky → ricerca intelligente EPG → fallback
                 const skyInfo = SKY_CHANNEL_MAP[name] || {};
-                const epgInfo = epgMap[normalizeName(name)] || {};
+                const epgInfo = findEpgInfo(name);
                 const tvgId = skyInfo.tvgId || epgInfo.tvgId || normalizeName(name);
                 const epgLogo = skyInfo.logo || epgInfo.logo || '';
 
@@ -213,12 +240,13 @@ async function buildChannels() {
                     tvgId: tvgId
                 });
                 newGenres.add(category);
+                uaznaoNormalizedNames.add(normalizeName(name));
             }
             console.log(`[Uaznao] ${newChannels.length} canali italiani.`);
         } catch (e) { console.error(`[Uaznao] Errore: ${e.message}`); }
     }
 
-    // --- Zappr ---
+    // --- Zappr (solo se non già presente in Uaznao) ---
     if (ZAPPR_URL) {
         console.log('[Zappr] Download...');
         try {
@@ -227,15 +255,25 @@ async function buildChannels() {
                 const name = ch.name;
                 if (!isItalianChannel(name)) continue;
 
+                if (uaznaoNormalizedNames.has(normalizeName(name))) {
+                    console.log(`[Zappr] Saltato (doppione): ${name}`);
+                    continue;
+                }
+
                 const category = getCategory(name);
                 const urlToUse = (ch.geoblock?.url && ch.geoblock.url !== true) ? ch.geoblock.url : ch.url;
                 if (!urlToUse || urlToUse.startsWith('zappr://')) continue;
 
                 const clearkeys = extractClearkeyZappr(ch.licensedetails);
-                const streamUrl = buildStreamUrl(urlToUse, clearkeys, true);  // SSL bypass per Zappr
+                if (!clearkeys) {
+                    console.log(`[Zappr] Saltato (AES-128): ${name}`);
+                    continue;
+                }
+
+                const streamUrl = buildStreamUrl(urlToUse, clearkeys, true);
 
                 const skyInfo = SKY_CHANNEL_MAP[name] || {};
-                const epgInfo = epgMap[normalizeName(name)] || {};
+                const epgInfo = findEpgInfo(name);
                 const tvgId = skyInfo.tvgId || epgInfo.tvgId || normalizeName(name);
                 const epgLogo = skyInfo.logo || epgInfo.logo || '';
 
@@ -264,14 +302,15 @@ async function buildChannels() {
     console.log(`[Totale] ${channels.length} canali.`);
 }
 
-// ---------- Scheduling intelligente ----------
+// ---------- Scheduling intelligente (scadenze Uaznao) ----------
 function getNextRefreshTime(uaznaoData) {
     if (!uaznaoData || !Array.isArray(uaznaoData)) return null;
     let next = null;
+    const now = new Date();
     for (const item of uaznaoData) {
         if (item.expiresAt) {
             const d = new Date(item.expiresAt);
-            if (!isNaN(d) && (!next || d < next)) next = d;
+            if (!isNaN(d) && d > now && (!next || d < next)) next = d;
         }
     }
     return next;
@@ -307,15 +346,10 @@ function scheduleEPG() {
     if (!EPG_URL) return;
     const now = new Date();
     const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 2, 0, 0, 0));
-    if (next <= now) {
-        next.setUTCDate(next.getUTCDate() + 1);
-    }
+    if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
     const delay = next.getTime() - now.getTime();
     console.log(`[EPG] Prossimo aggiornamento programmi alle ${next.toISOString()} (tra ${Math.round(delay / 60000)} min)`);
-    setTimeout(() => {
-        updateEPG();
-        scheduleEPG();
-    }, delay);
+    setTimeout(() => { updateEPG(); scheduleEPG(); }, delay);
 }
 
 // ---------- Stremio ----------
