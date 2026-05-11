@@ -7,11 +7,13 @@ const zlib = require('zlib');
 const sharp = require('sharp');
 const os = require('os');
 
+// ---------- Configurazione ----------
 const PORT = process.env.PORT || 3000;
-const M3U_URL = process.env.M3U_URL;
+const UAZNAO_URL = process.env.UAZNAO_URL;                          // URL JSON Uaznao
+const ZAPPR_URL = process.env.ZAPPR_URL || 'https://channels.zappr.stream/it/dtt/national.json';
 const EPG_URL = process.env.EPG_URL;
-const REFRESH_INTERVAL = (parseInt(process.env.REFRESH_INTERVAL_MIN) || 60) * 60 * 1000;
-const EASYPROXY_URL = process.env.EASYPROXY_URL?.replace(/\/$/, ''); 
+const REFRESH_INTERVAL_MIN = parseInt(process.env.REFRESH_INTERVAL_MIN) || 60;
+const EASYPROXY_URL = process.env.EASYPROXY_URL?.replace(/\/$/, '');
 const EASYPROXY_PASSWORD = process.env.EASYPROXY_PASSWORD;
 
 const LOCAL_IP = process.env.LOCAL_IP || (() => {
@@ -23,133 +25,325 @@ const LOCAL_IP = process.env.LOCAL_IP || (() => {
     }
     return '127.0.0.1';
 })();
-
 const LOGO_BASE_URL = process.env.LOGO_BASE_URL?.replace(/\/$/, '') || `http://${LOCAL_IP}:${PORT}/logo`;
-
 console.log(`[Init] Logo endpoint: ${LOGO_BASE_URL}`);
 
-const EPG_TVG_ID_MAP = {
-  "sky.uno.it": "Sky.Uno.it", "sky.atlantic.it": "Sky.Atlantic.it", "sky.serie.it": "Sky.Serie.it",
-  "sky.investigation.it": "Sky.Investigation.it", "sky.crime.it": "Sky.Crime.it",
-  "sky.documentaries.it": "Sky.Documentaries.it", "sky.nature.it": "Sky.Nature.it",
-  "sky.arte.it": "Sky.Arte.it", "sky.adventure.it": "Sky.Adventure.it", "skycollection": "Sky.Collection.it",
-  "sky.cinema.uno.it": "Sky.Cinema.Uno.it", "sky.cinema.action.it": "Sky.Cinema.Action.it",
-  "sky.cinema.comedy.it": "Sky.Cinema.Comedy.it", "sky.cinema.drama.it": "Sky.Cinema.Drama.it",
-  "sky.cinema.due.it": "Sky.Cinema.Due.it", "sky.cinema.romance.it": "Sky.Cinema.Romance.it",
-  "sky.cinema.suspense.it": "Sky.Cinema.Suspense.it", "sky.cinema.collection.it": "Sky.Cinema.Collection.it",
-  "skycinemaillumination": "Sky.Cinema.Illumination.it",
-  "sky.sport.24.it": "Sky.Sport.24.it", "sky.sport.uno.it": "Sky.Sport.Uno.it",
-  "sky.sport.arena.it": "Sky.Sport.Arena.it", "sky.sport.calcio.it": "Sky.Sport.Calcio.it",
-  "sky.sport.f1.it": "Sky.Sport.F1.it", "sky.sport.max.it": "Sky.Sport.Max.it",
-  "sky.sport.mix.it": "Sky.Sport.Mix.it", "sky.sport.motogp.it": "Sky.Sport.MotoGP.it",
-  "sky.sport.tennis.it": "Sky.Sport.Tennis.it", "sky.sport.golf.it": "Sky.Sport.Golf.it",
-  "skysportbasket": "Sky.Sport.Basket.it", "sky.sport.legend.it": "Sky.Sport.Legend.it",
-  "sky.sport..251.it": "Sky.Sport.251.it", "sky.sport..252.it": "Sky.Sport.252.it",
-  "sky.sport..253.it": "Sky.Sport.253.it", "sky.sport..254.it": "Sky.Sport.254.it",
-  "sky.sport..255.it": "Sky.Sport.255.it", "sky.sport..256.it": "Sky.Sport.256.it",
-  "sky.sport..257.it": "Sky.Sport.257.it", "sky.sport..258.it": "Sky.Sport.258.it",
-  "sky.sport..259.it": "Sky.Sport.259.it", "sky.tg24.it": "Sky.TG24.it",
-  "comedy.central.it": "Comedy.Central.it", "mtv.hd.it": "MTV.HD.it",
-  "gambero.rosso.hd.it": "Gambero.Rosso.HD.it", "classica.hd.it": "Classica.HD.it",
-  "tv8.hd.it": "TV8.HD.it", "super!.it": "Super!.it",
+// ---------- Categorizzazione (come script Python) ----------
+const CATEGORY_KEYWORDS = {
+    "Rai": ["rai"],
+    "Mediaset": ["twenty seven", "twentyseven", "mediaset", "italia 1", "italia 2", "canale 5", "la 5", "cine 34", "top crime", "iris", "focus", "rete 4"],
+    "Sport": ["inter", "milan", "lazio", "calcio", "tennis", "sport", "sportitalia", "trsport", "sports", "super tennis", "supertennis", "dazn", "eurosport", "sky sport", "rai sport", "eventi", "lba"],
+    "Film - Serie TV": ["crime", "primafila", "cinema", "movie", "film", "serie", "hbo", "fox", "rakuten", "atlantic"],
+    "News": ["news", "tg", "rai news", "sky tg", "tgcom", "euronews"],
+    "Bambini": ["frisbee", "super!", "fresbee", "k2", "cartoon", "boing", "nick", "disney", "baby", "rai yoyo", "cartoonito", "kids"],
+    "Documentari": ["documentaries", "discovery", "geo", "history", "nat geo", "nature", "arte", "documentary"],
+    "Musica": ["deejay", "rds", "hits", "rtl", "mtv", "vh1", "radio", "music", "kiss", "kisskiss", "m2o", "fm", "r101", "rai radio"],
+    "Altro": []
 };
 
-let channels = [], genres = new Set(), epgData = {};
-
-async function downloadEPG(url) {
-    const r = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
-    if (url.endsWith('.gz') || r.headers['content-type']?.includes('gzip'))
-        return zlib.gunzipSync(r.data).toString('utf-8');
-    return r.data.toString('utf-8');
+function getCategory(name) {
+    const n = name.toLowerCase();
+    for (const [cat, kws] of Object.entries(CATEGORY_KEYWORDS)) {
+        if (kws.some(kw => n.includes(kw))) return cat;
+    }
+    return "Altro";
 }
 
-async function updateData() {
-    console.log(`[Update] Chiamata al Playlist Builder...`);
+// ---------- Utility ----------
+function normalizeName(name) {
+    if (!name) return "";
+    let n = name.toLowerCase();
+    n = n.replace(/\s+/g, '');
+    n = n.replace(/\[.*?\]/g, '');
+    n = n.replace(/\(.*?\)/g, '');
+    n = n.replace(/\.it\b/g, '');
+    n = n.replace(/hd|fullhd/gi, '');
+    n = n.replace(/[^a-z0-9À-ÿ]/g, '');
+    return n;
+}
+
+// ---------- Stato globale ----------
+let channels = [];
+let genres = new Set();
+let epgMap = {};      // normalized_name → { tvgId, logo }
+let epgData = {};     // tvgId → programmes[]
+let refreshTimer = null;
+
+// ---------- EPG ----------
+async function downloadEPG(url) {
+    const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 60000 });
+    if (url.endsWith('.gz') || resp.headers['content-type']?.includes('gzip')) {
+        return zlib.gunzipSync(resp.data).toString('utf-8');
+    }
+    return resp.data.toString('utf-8');
+}
+
+async function updateEPG() {
+    if (!EPG_URL) return;
+    console.log('[EPG] Aggiornamento...');
     try {
-        const bp = new URLSearchParams(); bp.set('url', M3U_URL);
-        if (EASYPROXY_PASSWORD) bp.set('api_password', EASYPROXY_PASSWORD);
-        const builderUrl = `${EASYPROXY_URL}/playlist?${bp.toString()}`;
-        const { data } = await axios.get(builderUrl, { timeout: 30000 });
-        const lines = data.split('\n');
-        const nc = [], ng = new Set();
-        let cName = '', cAttr = {};
-        for (const line of lines) {
-            const clean = line.trim();
-            if (!clean) continue;
-            if (clean.startsWith('#EXTINF:')) {
-                const attrs = {}, re = /(\w+(?:-\w+)*)="([^"]*)"/g; let m;
-                while ((m = re.exec(clean))) attrs[m[1]] = m[2];
-                const nm = clean.match(/,(.*)$/);
-                cName = nm ? nm[1].trim() : 'Unknown'; cAttr = attrs;
-            } else if (!clean.startsWith('#') && cName) {
-                const group = cAttr['group-title'] || 'Altro'; ng.add(group);
-                const idHash = crypto.createHash('md5').update(clean).digest('hex').substring(0, 10);
-                const originalLogo = cAttr['tvg-logo'] || null;
-                const cleanName = cName.replace(/\[.*?\]/g, '').trim();
-                const logoUrl = originalLogo
-                    ? `${LOGO_BASE_URL}?url=${encodeURIComponent(originalLogo)}&name=${encodeURIComponent(cleanName)}`
-                    : `${LOGO_BASE_URL}?name=${encodeURIComponent(cleanName)}`;
-                nc.push({ id: `iptv_${idHash}`, type: 'tv', name: cName, url: clean,
-                    genre: group, logo: logoUrl, tvgId: cAttr['tvg-id'] || null });
-                cName = ''; cAttr = {};
+        const xml = await downloadEPG(EPG_URL);
+        const parsed = await new xml2js.Parser().parseStringPromise(xml);
+        const newMap = {};
+        const newData = {};
+
+        if (parsed.tv?.channel) {
+            for (const ch of parsed.tv.channel) {
+                const id = ch.$.id;
+                const name = ch['display-name']?.[0];
+                const icon = ch.icon?.[0]?.$?.src || '';
+                if (id && name) {
+                    newMap[normalizeName(name)] = { tvgId: id, logo: icon };
+                }
             }
         }
-        channels = nc; genres = ng;
-        console.log(`[M3U] Caricati ${channels.length} canali.`);
-    } catch (e) { console.error(`[M3U] Errore: ${e.message}`); }
 
-    if (EPG_URL) {
-        try {
-            const data = await downloadEPG(EPG_URL);
-            const result = await (new xml2js.Parser()).parseStringPromise(data);
-            epgData = {};
-            if (result.tv?.programme) result.tv.programme.forEach(p => {
-                const ch = p.$.channel; if (!epgData[ch]) epgData[ch] = [];
-                epgData[ch].push({ 
-                    title: p.title ? (p.title[0]._ || p.title[0]) : 'Unknown',
-                    desc: p.desc ? (p.desc[0]._ || p.desc[0]) : '' });
-            });
-            console.log(`[EPG] Pronta per ${Object.keys(epgData).length} canali.`);
-        } catch (e) { console.error(`[EPG] Errore: ${e.message}`); }
+        if (parsed.tv?.programme) {
+            for (const p of parsed.tv.programme) {
+                const chId = p.$.channel;
+                if (!newData[chId]) newData[chId] = [];
+                newData[chId].push({
+                    title: p.title?.[0]?._ || p.title?.[0] || 'Senza titolo',
+                    desc: p.desc?.[0]?._ || p.desc?.[0] || '',
+                    start: new Date(p.$.start),
+                    stop: new Date(p.$.stop)
+                });
+            }
+        }
+
+        epgMap = newMap;
+        epgData = newData;
+        console.log(`[EPG] Pronta: ${Object.keys(epgMap).length} canali, ${Object.keys(epgData).length} con programmi`);
+    } catch (e) {
+        console.error(`[EPG] Errore: ${e.message}`);
     }
 }
 
-function run() {
-    updateData();
+// ---------- Estrazione clearkey ----------
+function extractClearkeyUaznao(url) {
+    try {
+        const m = url.match(/ck=([^&\s]+)/);
+        if (!m) return null;
+        const decoded = Buffer.from(m[1], 'base64').toString('utf-8');
+        const parts = decoded.split(':');
+        if (parts.length >= 2) return `${parts[0]}:${parts[1]}`;
+    } catch {}
+    return null;
+}
+
+function extractClearkeyZappr(details) {
+    if (!details) return null;
+    if (typeof details === 'string') return details;               // già "kid:key"
+    if (typeof details === 'object') {
+        return Object.entries(details).map(([k, v]) => `${k}:${v}`).join(',');
+    }
+    return null;
+}
+
+// ---------- Costruzione URL EasyProxy ----------
+function buildStreamUrl(streamUrl, clearkey) {
+    const params = new URLSearchParams();
+    params.set('url', streamUrl);
+    if (EASYPROXY_PASSWORD) params.set('api_password', EASYPROXY_PASSWORD);
+    if (clearkey) params.set('clearkey', clearkey);
+    return `${EASYPROXY_URL}/proxy/manifest.m3u8?${params.toString()}`;
+}
+
+// ---------- Fetch & merge ----------
+async function buildChannels() {
+    const newChannels = [];
+    const newGenres = new Set();
+
+    // --- Uaznao ---
+    if (UAZNAO_URL) {
+        console.log('[Uaznao] Download...');
+        try {
+            const { data } = await axios.get(UAZNAO_URL, { timeout: 30000 });
+            for (const item of data) {
+                const name = item.channelName;
+                const category = getCategory(name);
+                const clearkey = extractClearkeyUaznao(item.url);
+                const cleanUrl = item.url.replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
+                const streamUrl = buildStreamUrl(cleanUrl, clearkey);
+                const norm = normalizeName(name);
+                const epgInfo = epgMap[norm] || {};
+                const idHash = crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10);
+                const logo = epgInfo.logo || item.logo || '';
+                const logoUrl = logo
+                    ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}`
+                    : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
+
+                newChannels.push({
+                    id: `iptv_${idHash}`,
+                    type: 'tv',
+                    name: `${name}`,
+                    url: streamUrl,
+                    genre: category,
+                    logo: logoUrl,
+                    tvgId: epgInfo.tvgId || norm
+                });
+                newGenres.add(category);
+            }
+            console.log(`[Uaznao] ${data.length} canali`);
+        } catch (e) {
+            console.error(`[Uaznao] Errore: ${e.message}`);
+        }
+    }
+
+    // --- Zappr ---
+    if (ZAPPR_URL) {
+        console.log('[Zappr] Download...');
+        try {
+            const { data } = await axios.get(ZAPPR_URL, { timeout: 30000 });
+            for (const ch of (data.channels || [])) {
+                const name = ch.name;
+                const category = getCategory(name);
+                const urlToUse = (ch.geoblock?.url && ch.geoblock.url !== true) ? ch.geoblock.url : ch.url;
+                if (!urlToUse || urlToUse.startsWith('zappr://')) continue;
+
+                const clearkey = extractClearkeyZappr(ch.licensedetails);
+                const streamUrl = buildStreamUrl(urlToUse, clearkey);
+                const norm = normalizeName(name);
+                const epgInfo = epgMap[norm] || {};
+                const idHash = crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10);
+                const logo = ch.logo ? `https://channels.zappr.stream/logos/it/optimized/${ch.logo}` : (epgInfo.logo || '');
+                const logoUrl = logo
+                    ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}`
+                    : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
+
+                newChannels.push({
+                    id: `iptv_${idHash}`,
+                    type: 'tv',
+                    name: `${name}`,
+                    url: streamUrl,
+                    genre: category,
+                    logo: logoUrl,
+                    tvgId: epgInfo.tvgId || norm
+                });
+                newGenres.add(category);
+            }
+            console.log(`[Zappr] ${data.channels?.length || 0} canali`);
+        } catch (e) {
+            console.error(`[Zappr] Errore: ${e.message}`);
+        }
+    }
+
+    channels = newChannels;
+    genres = newGenres;
+    console.log(`[Totale] ${channels.length} canali`);
+}
+
+// ---------- Scheduling intelligente ----------
+function getNextRefreshTime(uaznaoData) {
+    if (!uaznaoData || !Array.isArray(uaznaoData)) return null;
+    let next = null;
+    for (const item of uaznaoData) {
+        if (item.expiresAt) {
+            const d = new Date(item.expiresAt);
+            if (!isNaN(d) && (!next || d < next)) next = d;
+        }
+    }
+    return next;
+}
+
+function scheduleNextRefresh(uaznaoData) {
+    if (refreshTimer) clearTimeout(refreshTimer);
+
+    const nextExpiry = getNextRefreshTime(uaznaoData);
+    let delayMs;
+
+    if (nextExpiry) {
+        // Refresh 5 minuti prima della scadenza più vicina
+        const target = nextExpiry.getTime() - 5 * 60 * 1000;
+        delayMs = Math.max(60_000, target - Date.now()); // almeno 1 minuto
+        console.log(`[Scheduler] Prossima scadenza: ${nextExpiry.toISOString()}, refresh tra ${Math.round(delayMs / 60000)} min`);
+    } else {
+        delayMs = REFRESH_INTERVAL_MIN * 60 * 1000;
+        console.log(`[Scheduler] Nessuna scadenza, refresh ogni ${REFRESH_INTERVAL_MIN} min`);
+    }
+
+    refreshTimer = setTimeout(() => updateChannels(), delayMs);
+}
+
+async function updateChannels() {
+    console.log('[Update] Inizio aggiornamento canali...');
+    let uaznaoData = null;
+    if (UAZNAO_URL) {
+        try { uaznaoData = (await axios.get(UAZNAO_URL, { timeout: 30000 })).data; } catch {}
+    }
+    await buildChannels();   // usa epgMap già in memoria
+    await updateEPG();       // refresh EPG (verrà fatto anche giornalmente)
+    scheduleNextRefresh(uaznaoData);
+}
+
+// ---------- EPG giornaliero ----------
+function scheduleEPG() {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(24, 1, 0, 0); // domani alle 00:01
+    const delay = next - now;
+    console.log(`[EPG] Prossimo aggiornamento programmi tra ${Math.round(delay / 60000)} min`);
+    setTimeout(() => {
+        updateEPG();
+        scheduleEPG(); // riprogramma per il giorno dopo
+    }, delay);
+}
+
+// ---------- Stremio ----------
+let builder, iface;
+
+async function run() {
+    await updateEPG();
+    await updateChannels();
+    scheduleEPG();
+
     const manifest = {
-        id: 'org.iptv.arta', version: '1.0.0',
-        name: 'ARTA LIVETV', description: 'Streaming Live TV con supporto DRM',
-        resources: ['catalog', 'meta', 'stream'], types: ['tv'],
+        id: 'org.iptv.arta',
+        version: '1.0.0',
+        name: 'ARTA LIVETV',
+        description: 'Streaming Live TV con DRM',
+        resources: ['catalog', 'meta', 'stream'],
+        types: ['tv'],
         catalogs: [{
             type: 'tv', id: 'iptv_live', name: 'Canali TV',
             extra: [
                 { name: 'genre', isRequired: false, options: Array.from(genres).sort() },
-                { name: 'search', isRequired: false }, { name: 'skip', isRequired: false }
+                { name: 'search', isRequired: false },
+                { name: 'skip', isRequired: false }
             ]
         }],
-        idPrefixes: ['iptv_'], behaviorHints: { configurable: false },
+        idPrefixes: ['iptv_'],
+        behaviorHints: { configurable: false },
         logo: "https://dl.strem.io/addon-logo.png"
     };
-    const builder = new addonBuilder(manifest);
+
+    builder = new addonBuilder(manifest);
 
     builder.defineCatalogHandler(async ({ extra }) => {
         let f = channels;
         if (extra?.genre) f = f.filter(c => c.genre === extra.genre);
         if (extra?.search) { const q = extra.search.toLowerCase(); f = f.filter(c => c.name.toLowerCase().includes(q)); }
         const skip = extra?.skip ? parseInt(extra.skip) : 0;
-        const metas = f.slice(skip, skip + 100).map(c => ({ id: c.id, type: 'tv', name: c.name, poster: c.logo, posterShape: 'landscape', genres: [c.genre] }));
+        const metas = f.slice(skip, skip + 100).map(c => ({
+            id: c.id, type: 'tv', name: c.name, poster: c.logo, posterShape: 'landscape', genres: [c.genre]
+        }));
         return { metas };
     });
 
     builder.defineMetaHandler(async ({ id }) => {
         const ch = channels.find(c => c.id === id);
         if (!ch) return { meta: null };
-        let epgId = ch.tvgId; if (epgId && EPG_TVG_ID_MAP[epgId]) epgId = EPG_TVG_ID_MAP[epgId];
+
+        // Cerca programma corrente
         let desc = `Categoria: ${ch.genre}`;
-        if (epgId && epgData[epgId]?.length > 0) {
-            desc += `\n\nORA IN ONDA:\n${epgData[epgId][0].title}`;
-            if (epgData[epgId][0].desc) desc += `\n${epgData[epgId][0].desc}`;
+        const programmes = epgData[ch.tvgId];
+        if (programmes?.length) {
+            const now = new Date();
+            const current = programmes.find(p => p.start <= now && p.stop > now) || programmes[0];
+            desc += `\n\nORA IN ONDA:\n${current.title}`;
+            if (current.desc) desc += `\n${current.desc}`;
         }
+
         return { meta: { id: ch.id, type: 'tv', name: ch.name, poster: ch.logo, posterShape: 'landscape', background: ch.logo, description: desc, genres: [ch.genre] } };
     });
 
@@ -161,28 +355,28 @@ function run() {
     });
 
     const app = express();
+
+    // Logo proxy
     app.get('/logo', async (req, res) => {
         const { url, name } = req.query;
         if (!url) { res.type('svg').send(makePlaceholderSVG(name)); return; }
         try {
-            const logoResp = await axios.get(url, { responseType: 'arraybuffer', timeout: 5000,
-                headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://guidatv.sky.it' } });
-            const resized = await sharp(logoResp.data).resize(320, 180, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 1 } }).png().toBuffer();
+            const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 5000, headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://guidatv.sky.it' } });
+            const resized = await sharp(resp.data).resize(320, 180, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 1 } }).png().toBuffer();
             res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' }).send(resized);
-        } catch (e) { res.type('svg').send(makePlaceholderSVG(name || 'Logo')); }
+        } catch { res.type('svg').send(makePlaceholderSVG(name || 'Logo')); }
     });
 
     function makePlaceholderSVG(text) {
-        const safeText = (text || 'Canale').replace(/&/g, '&amp;').replace(/</g, '&lt;');
-        return Buffer.from(`<svg width="320" height="180" xmlns="http://www.w3.org/2000/svg"><rect fill="#1a1a1a" width="320" height="180"/><text fill="#ffffff" font-family="Arial" font-size="20" x="160" y="90" text-anchor="middle" dominant-baseline="middle">${safeText}</text></svg>`);
+        const safe = (text || 'Canale').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+        return Buffer.from(`<svg width="320" height="180" xmlns="http://www.w3.org/2000/svg"><rect fill="#1a1a1a" width="320" height="180"/><text fill="#ffffff" font-family="Arial" font-size="20" x="160" y="90" text-anchor="middle" dominant-baseline="middle">${safe}</text></svg>`);
     }
 
     app.use((req, res, next) => { res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Access-Control-Allow-Headers', '*'); res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS'); if (req.method === 'OPTIONS') return res.sendStatus(200); next(); });
     app.get('/manifest.json', (req, res) => { const m = builder.getInterface().manifest; m.catalogs[0].extra[0].options = Array.from(genres).sort(); res.json(m); });
-    const iface = builder.getInterface();
+    iface = builder.getInterface();
     app.use('/', getRouter(iface));
-    app.listen(PORT, '0.0.0.0', () => { console.log(`🚀 ARTA LIVETV in ascolto sulla porta ${PORT}`); });
-    setInterval(async () => { await updateData(); iface.manifest.catalogs[0].extra[0].options = Array.from(genres).sort(); }, REFRESH_INTERVAL);
+    app.listen(PORT, '0.0.0.0', () => console.log(`🚀 ARTA LIVETV sulla porta ${PORT}`));
 }
 
 run();
