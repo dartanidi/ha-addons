@@ -28,7 +28,7 @@ const LOCAL_IP = process.env.LOCAL_IP || (() => {
 const LOGO_BASE_URL = process.env.LOGO_BASE_URL?.replace(/\/$/, '') || `http://${LOCAL_IP}:${PORT}/logo`;
 console.log(`[Init] Logo endpoint: ${LOGO_BASE_URL}`);
 
-// ---------- Filtro canali italiani (come script Python) ----------
+// ---------- Filtro canali italiani ----------
 const PAESI_STRANIERI = ["[inglese]", "[hr]", "[nl]", "[pl]", "[cz]", "[de]", "[fr]", "[es]", "[pt]"];
 
 function isItalianChannel(name) {
@@ -56,6 +56,19 @@ function getCategory(name) {
     }
     return "Altro";
 }
+
+// ---------- Mappa statica canali Sky (nome → tvg‑id e logo) ----------
+const SKY_CHANNEL_MAP = {
+    "Sky Uno": { tvgId: "Sky.Uno.it", logo: "https://guidatv.sky.it/logo/477skyuno_Light_Fit.png?checksum=cd37fd56-01f7-443e-a62d-ff99bf4c1b1c?tr=n-logo_80" },
+    "Sky Atlantic": { tvgId: "Sky.Atlantic.it", logo: "https://guidatv.sky.it/logo/226skyatlantic_Light_Fit.png?checksum=55e0b430-8ac2-482a-80eb-d79e3678ea49?tr=n-logo_80" },
+    "Sky Serie": { tvgId: "Sky.Serie.it", logo: "https://guidatv.sky.it/logo/684skyserie_Light_Fit.png?checksum=9fa612b4-52c6-4a22-9c98-40495a42475b?tr=n-logo_80" },
+    "Sky Investigation": { tvgId: "Sky.Investigation.it", logo: "https://guidatv.sky.it/logo/686skyinvestigation_Light_Fit.png?checksum=224897bb-44bb-41a3-9691-e19eacc670f0?tr=n-logo_80" },
+    "Sky Crime": { tvgId: "Sky.Crime.it", logo: "https://guidatv.sky.it/logo/249skycrime_Light_Fit.png?checksum=7d65e0c6-d90b-42d1-a014-46ba4d06b16b?tr=n-logo_80" },
+    "Sky Arte": { tvgId: "Sky.Arte.it", logo: "https://guidatv.sky.it/logo/74skyarte_Light_Fit.png?checksum=e7a7ddb0-6afa-42c8-93d8-b2a4f5c726e1?tr=n-logo_80" },
+    "Sky Documentaries": { tvgId: "Sky.Documentaries.it", logo: "https://guidatv.sky.it/logo/697skydocumentaries_Light_Fit.png?checksum=53245dbe-0b73-4190-b492-376dc7d53d2d?tr=n-logo_80" },
+    "Sky Nature": { tvgId: "Sky.Nature.it", logo: "https://guidatv.sky.it/logo/695skynature_Light_Fit.png?checksum=6a2c90be-bac2-4622-af95-39ec6b75e3b4?tr=n-logo_80" },
+    // Aggiungi altri canali Sky se necessario
+};
 
 // ---------- Utility ----------
 function normalizeName(name) {
@@ -134,26 +147,28 @@ function extractClearkeyUaznao(url) {
         if (!m) return null;
         const decoded = Buffer.from(m[1], 'base64').toString('utf-8');
         const parts = decoded.split(':');
-        if (parts.length >= 2) return `${parts[0]}:${parts[1]}`;
+        if (parts.length >= 2) return [`${parts[0]}:${parts[1]}`];  // array con una chiave
     } catch {}
-    return null;
+    return [];
 }
 
 function extractClearkeyZappr(details) {
-    if (!details) return null;
-    if (typeof details === 'string') return details;
+    if (!details) return [];
+    if (typeof details === 'string') return [details];               // singola chiave
     if (typeof details === 'object') {
-        return Object.entries(details).map(([k, v]) => `${k}:${v}`).join(',');
+        return Object.entries(details).map(([k, v]) => `${k}:${v}`); // chiavi multiple
     }
-    return null;
+    return [];
 }
 
-// ---------- Costruzione URL EasyProxy ----------
-function buildStreamUrl(streamUrl, clearkey) {
+// ---------- Costruzione URL EasyProxy (supporta più clearkey) ----------
+function buildStreamUrl(streamUrl, clearkeys) {
     const params = new URLSearchParams();
     params.set('url', streamUrl);
     if (EASYPROXY_PASSWORD) params.set('api_password', EASYPROXY_PASSWORD);
-    if (clearkey) params.set('clearkey', clearkey);
+    for (const ck of clearkeys) {
+        params.append('clearkey', ck);
+    }
     return `${EASYPROXY_URL}/proxy/manifest.m3u8?${params.toString()}`;
 }
 
@@ -169,36 +184,37 @@ async function buildChannels() {
             const { data } = await axios.get(UAZNAO_URL, { timeout: 30000 });
             for (const item of data) {
                 const name = item.channelName;
-                // Filtra solo canali italiani
                 if (!isItalianChannel(name)) continue;
 
                 const category = getCategory(name);
-                const clearkey = extractClearkeyUaznao(item.url);
+                const clearkeys = extractClearkeyUaznao(item.url);
                 const cleanUrl = item.url.replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
-                const streamUrl = buildStreamUrl(cleanUrl, clearkey);
-                const norm = normalizeName(name);
-                const epgInfo = epgMap[norm] || {};
-                const idHash = crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10);
-                const logo = epgInfo.logo || item.logo || '';
+                const streamUrl = buildStreamUrl(cleanUrl, clearkeys);
+
+                // Priorità: mappa Sky → epgMap → nome normalizzato
+                const skyInfo = SKY_CHANNEL_MAP[name] || {};
+                const epgInfo = epgMap[normalizeName(name)] || {};
+                const tvgId = skyInfo.tvgId || epgInfo.tvgId || normalizeName(name);
+                const epgLogo = skyInfo.logo || epgInfo.logo || '';
+
+                const logo = epgLogo || item.logo || '';
                 const logoUrl = logo
                     ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}`
                     : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
 
                 newChannels.push({
-                    id: `iptv_${idHash}`,
+                    id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
                     type: 'tv',
-                    name: name,   // senza [UAZNAO]
+                    name: name,
                     url: streamUrl,
                     genre: category,
                     logo: logoUrl,
-                    tvgId: epgInfo.tvgId || norm
+                    tvgId: tvgId
                 });
                 newGenres.add(category);
             }
-            console.log(`[Uaznao] ${newChannels.length} canali italiani caricati.`);
-        } catch (e) {
-            console.error(`[Uaznao] Errore: ${e.message}`);
-        }
+            console.log(`[Uaznao] ${newChannels.length} canali italiani.`);
+        } catch (e) { console.error(`[Uaznao] Errore: ${e.message}`); }
     }
 
     // --- Zappr ---
@@ -208,38 +224,38 @@ async function buildChannels() {
             const { data } = await axios.get(ZAPPR_URL, { timeout: 30000 });
             for (const ch of (data.channels || [])) {
                 const name = ch.name;
-                // Filtra solo canali italiani
                 if (!isItalianChannel(name)) continue;
 
                 const category = getCategory(name);
                 const urlToUse = (ch.geoblock?.url && ch.geoblock.url !== true) ? ch.geoblock.url : ch.url;
                 if (!urlToUse || urlToUse.startsWith('zappr://')) continue;
 
-                const clearkey = extractClearkeyZappr(ch.licensedetails);
-                const streamUrl = buildStreamUrl(urlToUse, clearkey);
-                const norm = normalizeName(name);
-                const epgInfo = epgMap[norm] || {};
-                const idHash = crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10);
-                const logo = ch.logo ? `https://channels.zappr.stream/logos/it/optimized/${ch.logo}` : (epgInfo.logo || '');
+                const clearkeys = extractClearkeyZappr(ch.licensedetails);
+                const streamUrl = buildStreamUrl(urlToUse, clearkeys);
+
+                const skyInfo = SKY_CHANNEL_MAP[name] || {};
+                const epgInfo = epgMap[normalizeName(name)] || {};
+                const tvgId = skyInfo.tvgId || epgInfo.tvgId || normalizeName(name);
+                const epgLogo = skyInfo.logo || epgInfo.logo || '';
+
+                const logo = epgLogo || (ch.logo ? `https://channels.zappr.stream/logos/it/optimized/${ch.logo}` : '');
                 const logoUrl = logo
                     ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}`
                     : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
 
                 newChannels.push({
-                    id: `iptv_${idHash}`,
+                    id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
                     type: 'tv',
-                    name: name,   // senza [ZAPPR]
+                    name: name,
                     url: streamUrl,
                     genre: category,
                     logo: logoUrl,
-                    tvgId: epgInfo.tvgId || norm
+                    tvgId: tvgId
                 });
                 newGenres.add(category);
             }
-            console.log(`[Zappr] ${newChannels.length} canali italiani caricati.`);
-        } catch (e) {
-            console.error(`[Zappr] Errore: ${e.message}`);
-        }
+            console.log(`[Zappr] ${newChannels.length} canali italiani.`);
+        } catch (e) { console.error(`[Zappr] Errore: ${e.message}`); }
     }
 
     channels = newChannels;
@@ -262,10 +278,8 @@ function getNextRefreshTime(uaznaoData) {
 
 function scheduleNextRefresh(uaznaoData) {
     if (refreshTimer) clearTimeout(refreshTimer);
-
     const nextExpiry = getNextRefreshTime(uaznaoData);
     let delayMs;
-
     if (nextExpiry) {
         const target = nextExpiry.getTime() - 5 * 60 * 1000;
         delayMs = Math.max(60_000, target - Date.now());
@@ -274,7 +288,6 @@ function scheduleNextRefresh(uaznaoData) {
         delayMs = REFRESH_INTERVAL_MIN * 60 * 1000;
         console.log(`[Scheduler] Nessuna scadenza, refresh ogni ${REFRESH_INTERVAL_MIN} min`);
     }
-
     refreshTimer = setTimeout(() => updateChannels(), delayMs);
 }
 
@@ -288,19 +301,16 @@ async function updateChannels() {
     scheduleNextRefresh(uaznaoData);
 }
 
-// ---------- EPG giornaliero (timezone consapevole, 02:00 UTC) ----------
+// ---------- EPG giornaliero (02:00 UTC) ----------
 function scheduleEPG() {
     if (!EPG_URL) return;
-
     const now = new Date();
     const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 2, 0, 0, 0));
     if (next <= now) {
         next.setUTCDate(next.getUTCDate() + 1);
     }
-
     const delay = next.getTime() - now.getTime();
     console.log(`[EPG] Prossimo aggiornamento programmi alle ${next.toISOString()} (tra ${Math.round(delay / 60000)} min)`);
-
     setTimeout(() => {
         updateEPG();
         scheduleEPG();
