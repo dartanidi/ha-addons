@@ -57,10 +57,13 @@ function getCategory(name) {
     return "Altro";
 }
 
-// ---------- Alias EPG (solo per nomi completamente diversi) ----------
+// ---------- Alias EPG ----------
 const NAME_ALIASES = {
     "sky sport basket": "sky sport nba",
 };
+
+// ---------- Logo LBA ----------
+const LBA_LOGO = 'https://cdn-ukwest.onetrust.com/logos/f5e93496-e77f-4ca2-8146-3faeb1ca757e/0198c261-d9ca-7f63-82f1-d90a5fb77e79/f8007094-53bc-462e-a2bd-d92114873064/App_Store_1280_1x.png';
 
 // ---------- Utility ----------
 function cleanNameForComparison(name) {
@@ -161,17 +164,17 @@ async function updateEPG() {
     }
 }
 
-// ---------- Ricerca EPG SICURA (nessun match “fantasma”) ----------
+// ---------- Ricerca EPG SICURA ----------
 function findEpgInfo(channelName) {
     if (!epgMap || Object.keys(epgMap).length === 0) return {};
 
     const originalLower = channelName.toLowerCase().trim();
-    let searchFor = NAME_ALIASES[originalLower] || originalLower;
+    const searchFor = NAME_ALIASES[originalLower] || originalLower;
 
     // 1. Match esatto con originalName EPG
     for (const entry of Object.values(epgMap)) {
         if (entry.originalName.toLowerCase() === searchFor) {
-            return { tvgId: entry.tvgId, logo: entry.logo };
+            return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
         }
     }
 
@@ -180,23 +183,23 @@ function findEpgInfo(channelName) {
     for (const entry of Object.values(epgMap)) {
         const epgClean = cleanNameForComparison(entry.originalName);
         if (epgClean === searchClean) {
-            return { tvgId: entry.tvgId, logo: entry.logo };
+            return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
         }
     }
 
-    // 3. Contenimento (unidirezionale: il nome EPG contiene il nome cercato)
+    // 3. Contenimento (l'EPG contiene il nome cercato)
     for (const entry of Object.values(epgMap)) {
         const epgClean = cleanNameForComparison(entry.originalName);
         if (epgClean.length >= searchClean.length && epgClean.includes(searchClean)) {
-            return { tvgId: entry.tvgId, logo: entry.logo };
+            return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
         }
     }
 
-    // 4. Contenimento inverso (il nome cercato contiene il nome EPG)
+    // 4. Contenimento inverso
     for (const entry of Object.values(epgMap)) {
         const epgClean = cleanNameForComparison(entry.originalName);
         if (searchClean.length >= epgClean.length && searchClean.includes(epgClean)) {
-            return { tvgId: entry.tvgId, logo: entry.logo };
+            return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
         }
     }
 
@@ -251,6 +254,12 @@ async function buildChannels() {
                 const name = item.channelName;
                 if (!isItalianChannel(name)) continue;
 
+                // Rimuovi canali con categoria indesiderata
+                const excludeCategories = ['portogallo', 'uk', 'tnt sports'];
+                if (item.category && excludeCategories.includes(item.category.toLowerCase())) continue;
+                // Rimuovi canali con [UK] nel nome
+                if (name.toLowerCase().includes('[uk]')) continue;
+
                 const category = getCategory(name);
                 const clearkeys = extractClearkeyUaznao(item.url);
                 const cleanUrl = item.url.replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
@@ -258,11 +267,23 @@ async function buildChannels() {
 
                 const epgInfo = findEpgInfo(name);
                 const tvgId = epgInfo.tvgId || normalizeName(name);
-                let logo = epgInfo.logo || '';
+                let logo = '';
 
-                // Forza placeholder Sky se il canale è Sky e non ha logo EPG
-                if (!logo && name.toLowerCase().startsWith('sky ')) {
-                    logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
+                // Logo per LBA
+                if (name.toLowerCase().startsWith('lba')) {
+                    logo = LBA_LOGO;
+                }
+                // Logo per canali Sky: solo se EPG restituisce un logo e il nome EPG inizia con "sky"
+                else if (name.toLowerCase().startsWith('sky ')) {
+                    if (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) {
+                        logo = epgInfo.logo;
+                    } else {
+                        logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
+                    }
+                }
+                // Altri canali: prendi logo EPG normalmente
+                else {
+                    logo = epgInfo.logo || '';
                 }
 
                 const logoUrl = logo
@@ -307,10 +328,18 @@ async function buildChannels() {
 
                 const epgInfo = findEpgInfo(name);
                 const tvgId = epgInfo.tvgId || normalizeName(name);
-                let logo = epgInfo.logo || '';
+                let logo = '';
 
-                if (!logo && name.toLowerCase().startsWith('sky ')) {
-                    logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
+                if (name.toLowerCase().startsWith('lba')) {
+                    logo = LBA_LOGO;
+                } else if (name.toLowerCase().startsWith('sky ')) {
+                    if (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) {
+                        logo = epgInfo.logo;
+                    } else {
+                        logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
+                    }
+                } else {
+                    logo = epgInfo.logo || '';
                 }
 
                 const logoUrl = logo
