@@ -190,12 +190,13 @@ function extractClearkeyUaznao(url) {
     } catch { return []; }
 }
 
-function extractClearkeyZappr(details) {
+function extractClearkeyZappr(license, details) {
+    if (!license || license !== 'clearkey') return null;  // solo clearkey supportato
     if (!details) return null;
-    if (typeof details === 'string') return [details];
+    if (typeof details === 'string') return [details];   // singola chiave
     if (typeof details === 'object') {
         const keys = Object.keys(details);
-        if (keys.length !== 1) return null;
+        if (keys.length !== 1) return null;               // multiple non supportate
         const firstKey = keys[0];
         return [`${firstKey}:${details[firstKey]}`];
     }
@@ -207,16 +208,18 @@ function buildStreamUrl(streamUrl, clearkeys, disableSsl = false) {
     const params = new URLSearchParams();
     params.set('url', streamUrl || '');
     if (EASYPROXY_PASSWORD) params.set('api_password', EASYPROXY_PASSWORD);
-    if (clearkeys) clearkeys.forEach(ck => params.append('clearkey', ck));
+    if (clearkeys && clearkeys.length > 0) {
+        clearkeys.forEach(ck => params.append('clearkey', ck));
+    }
     if (disableSsl) params.set('disable_ssl', '1');
     return `${EASYPROXY_URL}/proxy/manifest.m3u8?${params.toString()}`;
 }
 
-// ---------- Fetch & merge ----------
+// ---------- Fetch & merge (nuova logica) ----------
 async function buildChannels() {
     const newChannels = [], newGenres = new Set(), uaznaoNormalizedNames = new Set();
 
-    // --- Uaznao ---
+    // --- Uaznao (solo MPD) ---
     let uaznaoArray = null;
     if (UAZNAO_URL) {
         console.log('[Uaznao] Download...');
@@ -242,6 +245,10 @@ async function buildChannels() {
             const name = item.channelName;
             if (!name) continue;
             if (!isItalianChannel(name)) continue;
+
+            // Includi solo se l'URL termina con .mpd o contiene .mpd?
+            // Essendo Uaznao, tutti gli URL sono MPD con parametri, ma verifichiamo
+            if (!item.url || !item.url.toLowerCase().includes('.mpd')) continue;
 
             const excludeCategories = ['portogallo', 'uk', 'tnt sports'];
             if (item.category && excludeCategories.includes(item.category.toLowerCase())) continue;
@@ -277,10 +284,10 @@ async function buildChannels() {
             newGenres.add(category);
             uaznaoNormalizedNames.add(normalizeName(name));
         }
-        console.log(`[Uaznao] ${newChannels.length} canali italiani.`);
+        console.log(`[Uaznao] ${newChannels.length} canali MPD italiani.`);
     }
 
-    // --- Zappr ---
+    // --- Zappr (per tutti gli altri, ma non duplicati) ---
     if (ZAPPR_URL) {
         console.log('[Zappr] Download...');
         try {
@@ -293,18 +300,47 @@ async function buildChannels() {
                 const name = ch.name;
                 if (!name) continue;
                 if (!isItalianChannel(name)) continue;
+                // Salta se già presente in Uaznao
                 if (uaznaoNormalizedNames.has(normalizeName(name))) continue;
+                
+                // Salta canali indesiderati
                 if (name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
 
-                const category = getCategory(name);
-                const urlToUse = (ch.geoblock?.url && ch.geoblock.url !== true) ? ch.geoblock.url : ch.url;
+                // Supporta solo tipi stream gestibili: hls, dash, direct
+                const supportedTypes = ['hls', 'dash', 'direct'];
+                if (!ch.type || !supportedTypes.includes(ch.type)) continue;
+
+                // Salta canali con licenze non supportate (xdevel-wms, rai-akamai)
+                if (ch.license === 'xdevel-wms' || ch.license === 'rai-akamai') continue;
+
+                // Determina URL e clearkey
+                let urlToUse = ch.url;
+                let license = ch.license;
+                let licensedetails = ch.licensedetails;
+
+                // Se c'è geoblock, usa l'URL geoblock e i suoi parametri di licenza
+                if (ch.geoblock && ch.geoblock.url && ch.geoblock.url !== true) {
+                    urlToUse = ch.geoblock.url;
+                    // Il geoblock può avere una propria licenza
+                    if (ch.geoblock.license) {
+                        license = ch.geoblock.license;
+                        licensedetails = ch.geoblock.licensedetails;
+                    }
+                }
+
                 if (!urlToUse || urlToUse.startsWith('zappr://')) continue;
 
-                const clearkeys = extractClearkeyZappr(ch.licensedetails);
-                if (!clearkeys) continue;
+                // Estrai clearkey
+                const clearkeys = extractClearkeyZappr(license, licensedetails);
+                // Per canali con licenza clearkey, se non abbiamo chiavi valide, saltiamo
+                if (license === 'clearkey' && !clearkeys) continue;
 
-                const streamUrl = buildStreamUrl(urlToUse, clearkeys, true);
+                // Determina se disabilitare SSL (per alcuni host)
+                const disableSsl = urlToUse.includes('uvotv.zappr.stream') || urlToUse.includes('netplus.zappr.stream');
 
+                const streamUrl = buildStreamUrl(urlToUse, clearkeys || [], disableSsl);
+
+                const category = getCategory(name);
                 const epgInfo = findEpgInfo(name);
                 const tvgId = epgInfo.tvgId || '';
                 let logo = '';
@@ -319,6 +355,10 @@ async function buildChannels() {
                     }
                 } else {
                     logo = epgInfo.logo || '';
+                }
+                // Se non c'è logo EPG, prova con il logo Zappr
+                if (!logo && ch.logo) {
+                    logo = `https://channels.zappr.stream/logos/it/optimized/${ch.logo}`;
                 }
 
                 const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
