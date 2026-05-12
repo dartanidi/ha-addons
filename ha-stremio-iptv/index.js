@@ -33,7 +33,7 @@ const PAESI_STRANIERI = ["[inglese]", "[hr]", "[nl]", "[pl]", "[cz]", "[de]", "[
 
 function isItalianChannel(name) {
     if (!name) return false;
-    const n = name.toLowerCase();
+    const n = name.toLowerCase().trim();
     return !PAESI_STRANIERI.some(tag => n.includes(tag));
 }
 
@@ -190,8 +190,7 @@ function extractClearkeyUaznao(url) {
     } catch { return []; }
 }
 
-function extractClearkeyZappr(license, details) {
-    if (!license || license !== 'clearkey') return null;  // solo clearkey supportato
+function extractClearkeyZappr(details) {
     if (!details) return null;
     if (typeof details === 'string') return [details];   // singola chiave
     if (typeof details === 'object') {
@@ -215,11 +214,13 @@ function buildStreamUrl(streamUrl, clearkeys, disableSsl = false) {
     return `${EASYPROXY_URL}/proxy/manifest.m3u8?${params.toString()}`;
 }
 
-// ---------- Fetch & merge (nuova logica) ----------
+// ---------- Fetch & merge (priorità Uaznao, confronto per titolo) ----------
 async function buildChannels() {
-    const newChannels = [], newGenres = new Set(), uaznaoNormalizedNames = new Set();
+    const newChannels = [];
+    const newGenres = new Set();
+    const uaznaoTitles = new Set();   // titoli già presenti in Uaznao (lowercase)
 
-    // --- Uaznao (solo MPD) ---
+    // --- Uaznao (priorità assoluta) ---
     let uaznaoArray = null;
     if (UAZNAO_URL) {
         console.log('[Uaznao] Download...');
@@ -242,13 +243,9 @@ async function buildChannels() {
 
     if (uaznaoArray) {
         for (const item of uaznaoArray) {
-            const name = item.channelName;
+            const name = (item.channelName || '').trim();
             if (!name) continue;
             if (!isItalianChannel(name)) continue;
-
-            // Includi solo se l'URL termina con .mpd o contiene .mpd?
-            // Essendo Uaznao, tutti gli URL sono MPD con parametri, ma verifichiamo
-            if (!item.url || !item.url.toLowerCase().includes('.mpd')) continue;
 
             const excludeCategories = ['portogallo', 'uk', 'tnt sports'];
             if (item.category && excludeCategories.includes(item.category.toLowerCase())) continue;
@@ -282,12 +279,12 @@ async function buildChannels() {
                 type: 'tv', name, url: streamUrl, genre: category, logo: logoUrl, tvgId
             });
             newGenres.add(category);
-            uaznaoNormalizedNames.add(normalizeName(name));
+            uaznaoTitles.add(name.toLowerCase());   // memorizza titolo esatto
         }
-        console.log(`[Uaznao] ${newChannels.length} canali MPD italiani.`);
+        console.log(`[Uaznao] ${newChannels.length} canali italiani.`);
     }
 
-    // --- Zappr (per tutti gli altri, ma non duplicati) ---
+    // --- Zappr (solo canali non già presenti per titolo) ---
     if (ZAPPR_URL) {
         console.log('[Zappr] Download...');
         try {
@@ -297,11 +294,11 @@ async function buildChannels() {
                 console.log('[Zappr] Nessun canale trovato.');
             }
             for (const ch of zapprChannels) {
-                const name = ch.name;
+                const name = (ch.name || '').trim();
                 if (!name) continue;
                 if (!isItalianChannel(name)) continue;
-                // Salta se già presente in Uaznao
-                if (uaznaoNormalizedNames.has(normalizeName(name))) continue;
+                // Salta se il titolo è già presente in Uaznao
+                if (uaznaoTitles.has(name.toLowerCase())) continue;
                 
                 // Salta canali indesiderati
                 if (name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
@@ -315,27 +312,27 @@ async function buildChannels() {
 
                 // Determina URL e clearkey
                 let urlToUse = ch.url;
-                let license = ch.license;
                 let licensedetails = ch.licensedetails;
 
                 // Se c'è geoblock, usa l'URL geoblock e i suoi parametri di licenza
                 if (ch.geoblock && ch.geoblock.url && ch.geoblock.url !== true) {
                     urlToUse = ch.geoblock.url;
                     // Il geoblock può avere una propria licenza
-                    if (ch.geoblock.license) {
-                        license = ch.geoblock.license;
+                    if (ch.geoblock.licensedetails) {
                         licensedetails = ch.geoblock.licensedetails;
                     }
                 }
 
                 if (!urlToUse || urlToUse.startsWith('zappr://')) continue;
 
-                // Estrai clearkey
-                const clearkeys = extractClearkeyZappr(license, licensedetails);
-                // Per canali con licenza clearkey, se non abbiamo chiavi valide, saltiamo
-                if (license === 'clearkey' && !clearkeys) continue;
+                // Estrai clearkey (solo se il canale ha license === 'clearkey')
+                let clearkeys = null;
+                if (ch.license === 'clearkey' || (ch.geoblock && ch.geoblock.license === 'clearkey')) {
+                    clearkeys = extractClearkeyZappr(licensedetails);
+                    if (!clearkeys) continue;  // salta se le chiavi non sono valide (multiple o assenti)
+                }
 
-                // Determina se disabilitare SSL (per alcuni host)
+                // Disabilita SSL per alcuni host problematici
                 const disableSsl = urlToUse.includes('uvotv.zappr.stream') || urlToUse.includes('netplus.zappr.stream');
 
                 const streamUrl = buildStreamUrl(urlToUse, clearkeys || [], disableSsl);
@@ -369,7 +366,7 @@ async function buildChannels() {
                 });
                 newGenres.add(category);
             }
-            console.log(`[Zappr] ${newChannels.length} canali italiani.`);
+            console.log(`[Zappr] ${newChannels.length} canali italiani aggiunti.`);
         } catch (e) { console.error(`[Zappr] Errore: ${e.message}`); }
     }
 
@@ -522,8 +519,8 @@ async function run() {
             if (programmes.length) {
                 const now = new Date();
                 const current = programmes.find(p => p.start <= now && p.stop > now) || programmes[0];
-                desc += `\n\nORA IN ONDA:\n${current.title}`;
-                if (current.desc) desc += `\n${current.desc}`;
+                desc += `                       ORA IN ONDA: ${current.title}`;
+                if (current.desc) desc += ` - ${current.desc}`;
             }
         }
 
