@@ -36,7 +36,7 @@ function isItalianChannel(name) {
     return !PAESI_STRANIERI.some(tag => n.includes(tag));
 }
 
-// ---------- Categorizzazione (aggiunta LBA in Sport) ----------
+// ---------- Categorizzazione ----------
 const CATEGORY_KEYWORDS = {
     "Rai": ["rai"],
     "Mediaset": ["twenty seven", "twentyseven", "mediaset", "italia 1", "italia 2", "canale 5", "la 5", "cine 34", "top crime", "iris", "focus", "rete 4"],
@@ -57,7 +57,7 @@ function getCategory(name) {
     return "Altro";
 }
 
-// ---------- Alias per canali che nell'EPG hanno nome diverso ----------
+// ---------- Alias per canali con nome diverso nell'EPG ----------
 const NAME_ALIASES = {
     "sky sport basket": "sky sport nba",
     "sky sport 251": "sky sport 251",
@@ -69,7 +69,6 @@ const NAME_ALIASES = {
     "sky sport 257": "sky sport 257",
     "sky sport 258": "sky sport 258",
     "sky sport 259": "sky sport 259",
-    // Aggiungi altri alias se necessario
 };
 
 // ---------- Utility ----------
@@ -80,7 +79,7 @@ function cleanNameForComparison(name) {
         .replace(/\s*\+?\d+\s*/g, '')
         .replace(/\bhd\b|\bfullhd\b|\b4k\b/gi, '')
         .replace(/\bmaratone\b/gi, '')
-        .replace(/[^a-z0-9À-ÿ\s]/g, '')   // rimuove punteggiatura
+        .replace(/[^a-z0-9À-ÿ\s]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
 }
@@ -125,9 +124,25 @@ async function updateEPG() {
         if (parsed.tv?.channel) {
             for (const ch of parsed.tv.channel) {
                 const id = ch.$.id;
-                const name = ch['display-name']?.[0];
-                const icon = ch.icon?.[0]?.$?.src || '';
-                if (id && name && typeof name === 'string') {
+                let name = '';
+                if (ch['display-name']) {
+                    const first = ch['display-name'][0];
+                    if (typeof first === 'string') {
+                        name = first;
+                    } else if (typeof first === 'object' && first._) {
+                        name = first._;
+                    }
+                }
+                let icon = '';
+                if (ch.icon && Array.isArray(ch.icon)) {
+                    for (const ic of ch.icon) {
+                        if (ic.$ && ic.$.src) {
+                            icon = ic.$.src;
+                            break;
+                        }
+                    }
+                }
+                if (id && name) {
                     const norm = normalizeName(name);
                     newMap[norm] = { tvgId: id, logo: icon, originalName: name };
                 }
