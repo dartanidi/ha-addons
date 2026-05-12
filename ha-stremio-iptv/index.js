@@ -32,6 +32,7 @@ console.log(`[Init] Logo endpoint: ${LOGO_BASE_URL}`);
 const PAESI_STRANIERI = ["[inglese]", "[hr]", "[nl]", "[pl]", "[cz]", "[de]", "[fr]", "[es]", "[pt]"];
 
 function isItalianChannel(name) {
+    if (!name) return false;
     const n = name.toLowerCase();
     return !PAESI_STRANIERI.some(tag => n.includes(tag));
 }
@@ -50,6 +51,7 @@ const CATEGORY_KEYWORDS = {
 };
 
 function getCategory(name) {
+    if (!name) return "Altro";
     const n = name.toLowerCase();
     for (const [cat, kws] of Object.entries(CATEGORY_KEYWORDS)) {
         if (kws.some(kw => n.includes(kw))) return cat;
@@ -158,7 +160,7 @@ async function updateEPG() {
 
 // ---------- Ricerca EPG ----------
 function findEpgInfo(channelName) {
-    if (!epgMap || Object.keys(epgMap).length === 0) return {};
+    if (!epgMap || Object.keys(epgMap).length === 0 || !channelName) return {};
     const originalLower = channelName.toLowerCase().trim();
     const searchFor = NAME_ALIASES[originalLower] || originalLower;
 
@@ -178,6 +180,7 @@ function findEpgInfo(channelName) {
 
 // ---------- Estrazione clearkey ----------
 function extractClearkeyUaznao(url) {
+    if (!url) return [];
     try {
         const m = url.match(/ck=([^&\s]+)/);
         if (!m) return [];
@@ -192,7 +195,6 @@ function extractClearkeyZappr(details) {
     if (typeof details === 'string') return [details];
     if (typeof details === 'object') {
         const keys = Object.keys(details);
-        // Solo singola chiave supportata
         if (keys.length !== 1) return null;
         const firstKey = keys[0];
         return [`${firstKey}:${details[firstKey]}`];
@@ -203,7 +205,7 @@ function extractClearkeyZappr(details) {
 // ---------- Costruzione URL EasyProxy ----------
 function buildStreamUrl(streamUrl, clearkeys, disableSsl = false) {
     const params = new URLSearchParams();
-    params.set('url', streamUrl);
+    params.set('url', streamUrl || '');
     if (EASYPROXY_PASSWORD) params.set('api_password', EASYPROXY_PASSWORD);
     if (clearkeys) clearkeys.forEach(ck => params.append('clearkey', ck));
     if (disableSsl) params.set('disable_ssl', '1');
@@ -214,22 +216,28 @@ function buildStreamUrl(streamUrl, clearkeys, disableSsl = false) {
 async function buildChannels() {
     const newChannels = [], newGenres = new Set(), uaznaoNormalizedNames = new Set();
 
-    // --- Uaznao (priorità massima) ---
+    // --- Uaznao ---
     if (UAZNAO_URL) {
         console.log('[Uaznao] Download...');
         try {
             const { data } = await axios.get(UAZNAO_URL, { timeout: 30000 });
+            if (!Array.isArray(data)) {
+                console.error('[Uaznao] La risposta non è un array.');
+                return;
+            }
             for (const item of data) {
                 const name = item.channelName;
+                if (!name) continue;  // Salta se manca channelName
                 if (!isItalianChannel(name)) continue;
 
+                // Controllo sicuro della categoria
                 const excludeCategories = ['portogallo', 'uk', 'tnt sports'];
                 if (item.category && excludeCategories.includes(item.category.toLowerCase())) continue;
                 if (name.toLowerCase().includes('[uk]') || name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
 
                 const category = getCategory(name);
                 const clearkeys = extractClearkeyUaznao(item.url);
-                const cleanUrl = item.url.replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
+                const cleanUrl = (item.url || '').replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
                 const streamUrl = buildStreamUrl(cleanUrl, clearkeys);
 
                 const epgInfo = findEpgInfo(name);
@@ -261,13 +269,18 @@ async function buildChannels() {
         } catch (e) { console.error(`[Uaznao] Errore: ${e.message}`); }
     }
 
-    // --- Zappr (solo se non già presente in Uaznao) ---
+    // --- Zappr ---
     if (ZAPPR_URL) {
         console.log('[Zappr] Download...');
         try {
             const { data } = await axios.get(ZAPPR_URL, { timeout: 30000 });
-            for (const ch of (data.channels || [])) {
+            if (!data || !Array.isArray(data.channels)) {
+                console.error('[Zappr] Formato dati non valido.');
+                return;
+            }
+            for (const ch of data.channels) {
                 const name = ch.name;
+                if (!name) continue;
                 if (!isItalianChannel(name)) continue;
                 if (uaznaoNormalizedNames.has(normalizeName(name))) continue;
                 if (name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
@@ -318,7 +331,6 @@ async function buildChannels() {
 function getSkyCinemaExpiry(uaznaoData) {
     if (!uaznaoData || !Array.isArray(uaznaoData)) return null;
 
-    // Possibili nomi del canale
     const possibleNames = ['Sky Cinema Uno', 'Sky Cinema 1'];
     
     let skyCinema = null;
@@ -358,9 +370,9 @@ function scheduleNextRefresh(uaznaoData) {
     const skyExpiry = getSkyCinemaExpiry(uaznaoData);
 
     if (skyExpiry) {
-        const targetMs = skyExpiry.getTime() + 60 * 60 * 1000; // +1 ora
+        const targetMs = skyExpiry.getTime() + 60 * 60 * 1000;
         delayMs = targetMs - Date.now();
-        if (delayMs < 300000) delayMs = 300000; // minimo 5 minuti
+        if (delayMs < 300000) delayMs = 300000;
         console.log(`[Scheduler] Scadenza Sky Cinema Uno: ${skyExpiry.toISOString()}`);
         console.log(`[Scheduler] Refresh programmato per: ${new Date(targetMs).toISOString()} (locale: ${new Date(targetMs).toLocaleString()})`);
     } else {
