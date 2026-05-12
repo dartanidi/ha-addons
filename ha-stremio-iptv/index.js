@@ -77,22 +77,19 @@ function normalizeName(name) {
     return n.replace(/[^a-z0-9À-ÿ]/g, '');
 }
 
-// Converte una stringa data EPG in un oggetto Date UTC
 function parseDateUTC(dateStr) {
     if (!dateStr) return new Date();
-    // Formato tipico: "20260512000500 +0000"
     const match = dateStr.match(/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*([+-]\d{4})?/);
     if (match) {
         const [, y, m, d, h, min, s, offset] = match;
         const date = new Date(Date.UTC(+y, +m - 1, +d, +h, +min, +s));
         if (offset) {
-            // Applica l'offset manualmente (anche se di solito è +0000)
             const offsetMin = (offset[0] === '+' ? 1 : -1) * (parseInt(offset.slice(1, 3)) * 60 + parseInt(offset.slice(3, 5)));
             date.setUTCMinutes(date.getUTCMinutes() - offsetMin);
         }
         return date;
     }
-    return new Date(dateStr);  // fallback
+    return new Date(dateStr);
 }
 
 // ---------- Stato globale ----------
@@ -159,7 +156,7 @@ async function updateEPG() {
     }
 }
 
-// Ricerca EPG (invariata)
+// ---------- Ricerca EPG ----------
 function findEpgInfo(channelName) {
     if (!epgMap || Object.keys(epgMap).length === 0) return {};
     const originalLower = channelName.toLowerCase().trim();
@@ -179,7 +176,7 @@ function findEpgInfo(channelName) {
     return {};
 }
 
-// Estrazione clearkey (invariata)
+// ---------- Estrazione clearkey ----------
 function extractClearkeyUaznao(url) {
     try {
         const m = url.match(/ck=([^&\s]+)/);
@@ -194,16 +191,16 @@ function extractClearkeyZappr(details) {
     if (!details) return null;
     if (typeof details === 'string') return [details];
     if (typeof details === 'object') {
-        // Prende solo la prima chiave disponibile
-        const firstKey = Object.keys(details)[0];
-        if (firstKey) {
-            return [`${firstKey}:${details[firstKey]}`];
-        }
+        const keys = Object.keys(details);
+        // Solo singola chiave supportata
+        if (keys.length !== 1) return null;
+        const firstKey = keys[0];
+        return [`${firstKey}:${details[firstKey]}`];
     }
     return null;
 }
 
-// Costruzione URL EasyProxy (invariata)
+// ---------- Costruzione URL EasyProxy ----------
 function buildStreamUrl(streamUrl, clearkeys, disableSsl = false) {
     const params = new URLSearchParams();
     params.set('url', streamUrl);
@@ -217,6 +214,7 @@ function buildStreamUrl(streamUrl, clearkeys, disableSsl = false) {
 async function buildChannels() {
     const newChannels = [], newGenres = new Set(), uaznaoNormalizedNames = new Set();
 
+    // --- Uaznao (priorità massima) ---
     if (UAZNAO_URL) {
         console.log('[Uaznao] Download...');
         try {
@@ -263,6 +261,7 @@ async function buildChannels() {
         } catch (e) { console.error(`[Uaznao] Errore: ${e.message}`); }
     }
 
+    // --- Zappr (solo se non già presente in Uaznao) ---
     if (ZAPPR_URL) {
         console.log('[Zappr] Download...');
         try {
@@ -316,31 +315,48 @@ async function buildChannels() {
 }
 
 // ---------- Scheduling intelligente ----------
-function getNextRefreshTime(uaznaoData) {
+function getSkyCinemaExpiry(uaznaoData) {
     if (!uaznaoData || !Array.isArray(uaznaoData)) return null;
-    let next = null;
-    const now = new Date();
-    for (const item of uaznaoData) {
-        if (item.expiresAt) {
-            const d = new Date(item.expiresAt);
-            if (!isNaN(d) && d > now && (!next || d < next)) next = d;
-        }
-    }
-    return next;
+    const skyCinema = uaznaoData.find(item => item.channelName === 'Sky Cinema Uno');
+    if (!skyCinema || !skyCinema.expiresAt) return null;
+    const d = new Date(skyCinema.expiresAt);
+    return isNaN(d) ? null : d;
 }
 
 function scheduleNextRefresh(uaznaoData) {
     if (refreshTimer) clearTimeout(refreshTimer);
-    const nextExpiry = getNextRefreshTime(uaznaoData);
+
     let delayMs;
-    if (nextExpiry) {
-        const target = nextExpiry.getTime() - 5 * 60 * 1000;
-        delayMs = Math.max(60_000, target - Date.now());
-        console.log(`[Scheduler] Prossima scadenza: ${nextExpiry.toISOString()}, refresh tra ${Math.round(delayMs / 60000)} min`);
+    const skyExpiry = getSkyCinemaExpiry(uaznaoData);
+
+    if (skyExpiry) {
+        const targetMs = skyExpiry.getTime() + 60 * 60 * 1000; // +1 ora
+        delayMs = targetMs - Date.now();
+        if (delayMs < 300000) delayMs = 300000; // minimo 5 minuti
+        console.log(`[Scheduler] Scadenza Sky Cinema Uno: ${skyExpiry.toISOString()}`);
+        console.log(`[Scheduler] Refresh programmato per: ${new Date(targetMs).toISOString()} (locale: ${new Date(targetMs).toLocaleString()})`);
     } else {
-        delayMs = REFRESH_INTERVAL_MIN * 60 * 1000;
-        console.log(`[Scheduler] Nessuna scadenza, refresh ogni ${REFRESH_INTERVAL_MIN} min`);
+        const now = new Date();
+        let next = null;
+        if (uaznaoData && Array.isArray(uaznaoData)) {
+            for (const item of uaznaoData) {
+                if (item.expiresAt) {
+                    const d = new Date(item.expiresAt);
+                    if (!isNaN(d) && d > now && (!next || d < next)) next = d;
+                }
+            }
+        }
+        if (next) {
+            const target = next.getTime() - 5 * 60 * 1000;
+            delayMs = Math.max(60_000, target - Date.now());
+            console.log(`[Scheduler] Nessun Sky Cinema Uno, uso prima scadenza: ${next.toISOString()}`);
+        } else {
+            delayMs = REFRESH_INTERVAL_MIN * 60 * 1000;
+            console.log(`[Scheduler] Nessuna scadenza, refresh ogni ${REFRESH_INTERVAL_MIN} min`);
+        }
     }
+
+    console.log(`[Scheduler] Prossimo refresh tra ${Math.round(delayMs / 60000)} minuti.`);
     refreshTimer = setTimeout(() => updateChannels(), delayMs);
 }
 
@@ -407,7 +423,7 @@ async function run() {
         if (ch.tvgId && epgData[ch.tvgId]) {
             const programmes = epgData[ch.tvgId];
             if (programmes.length) {
-                const now = new Date(); // ora UTC (timestamp)
+                const now = new Date();
                 const current = programmes.find(p => p.start <= now && p.stop > now) || programmes[0];
                 desc += `\n\nORA IN ONDA:\n${current.title}`;
                 if (current.desc) desc += `\n${current.desc}`;
