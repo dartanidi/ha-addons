@@ -36,7 +36,7 @@ function isItalianChannel(name) {
     return !PAESI_STRANIERI.some(tag => n.includes(tag));
 }
 
-// ---------- Categorizzazione ----------
+// ---------- Categorizzazione (LBA in Sport) ----------
 const CATEGORY_KEYWORDS = {
     "Rai": ["rai"],
     "Mediaset": ["twenty seven", "twentyseven", "mediaset", "italia 1", "italia 2", "canale 5", "la 5", "cine 34", "top crime", "iris", "focus", "rete 4"],
@@ -57,18 +57,9 @@ function getCategory(name) {
     return "Altro";
 }
 
-// ---------- Alias per canali con nome diverso nell'EPG ----------
+// ---------- Alias EPG (solo per nomi completamente diversi) ----------
 const NAME_ALIASES = {
     "sky sport basket": "sky sport nba",
-    "sky sport 251": "sky sport 251",
-    "sky sport 252": "sky sport 252",
-    "sky sport 253": "sky sport 253",
-    "sky sport 254": "sky sport 254",
-    "sky sport 255": "sky sport 255",
-    "sky sport 256": "sky sport 256",
-    "sky sport 257": "sky sport 257",
-    "sky sport 258": "sky sport 258",
-    "sky sport 259": "sky sport 259",
 };
 
 // ---------- Utility ----------
@@ -170,44 +161,41 @@ async function updateEPG() {
     }
 }
 
-// ---------- Ricerca EPG robusta (multi‑livello) ----------
+// ---------- Ricerca EPG SICURA (nessun match “fantasma”) ----------
 function findEpgInfo(channelName) {
     if (!epgMap || Object.keys(epgMap).length === 0) return {};
 
     const originalLower = channelName.toLowerCase().trim();
-    const searchFor = NAME_ALIASES[originalLower] || originalLower;
+    let searchFor = NAME_ALIASES[originalLower] || originalLower;
 
-    // Livello 1: match esatto con originalName di EPG (case‑insensitive)
+    // 1. Match esatto con originalName EPG
     for (const entry of Object.values(epgMap)) {
         if (entry.originalName.toLowerCase() === searchFor) {
             return { tvgId: entry.tvgId, logo: entry.logo };
         }
     }
 
+    // 2. Match dei nomi puliti
     const searchClean = cleanNameForComparison(searchFor);
-    const searchNormalized = normalizeName(searchFor);
-
     for (const entry of Object.values(epgMap)) {
         const epgClean = cleanNameForComparison(entry.originalName);
-        const epgNormalized = normalizeName(entry.originalName);
-
-        // Livello 2: nomi puliti uguali
-        if (epgClean === searchClean || epgNormalized === searchNormalized) {
-            return { tvgId: entry.tvgId, logo: entry.logo };
-        }
-
-        // Livello 3: uno contiene l'altro (puliti)
-        if (epgClean.includes(searchClean) || searchClean.includes(epgClean) ||
-            epgNormalized.includes(searchNormalized) || searchNormalized.includes(epgNormalized)) {
+        if (epgClean === searchClean) {
             return { tvgId: entry.tvgId, logo: entry.logo };
         }
     }
 
-    // Livello 4: cercasi solo per parole chiave (es. "sky cinema" trova "Sky Cinema Uno HD")
-    const searchWords = searchClean.split(' ').filter(w => w.length > 2);
+    // 3. Contenimento (unidirezionale: il nome EPG contiene il nome cercato)
     for (const entry of Object.values(epgMap)) {
-        const epgWords = cleanNameForComparison(entry.originalName).split(' ');
-        if (searchWords.every(sw => epgWords.some(ew => ew.includes(sw) || sw.includes(ew)))) {
+        const epgClean = cleanNameForComparison(entry.originalName);
+        if (epgClean.length >= searchClean.length && epgClean.includes(searchClean)) {
+            return { tvgId: entry.tvgId, logo: entry.logo };
+        }
+    }
+
+    // 4. Contenimento inverso (il nome cercato contiene il nome EPG)
+    for (const entry of Object.values(epgMap)) {
+        const epgClean = cleanNameForComparison(entry.originalName);
+        if (searchClean.length >= epgClean.length && searchClean.includes(epgClean)) {
             return { tvgId: entry.tvgId, logo: entry.logo };
         }
     }
@@ -272,7 +260,7 @@ async function buildChannels() {
                 const tvgId = epgInfo.tvgId || normalizeName(name);
                 let logo = epgInfo.logo || '';
 
-                // Placeholder Sky per canali Sky senza logo
+                // Forza placeholder Sky se il canale è Sky e non ha logo EPG
                 if (!logo && name.toLowerCase().startsWith('sky ')) {
                     logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
                 }
