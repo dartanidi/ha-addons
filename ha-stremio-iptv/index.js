@@ -193,7 +193,13 @@ function extractClearkeyUaznao(url) {
 function extractClearkeyZappr(details) {
     if (!details) return null;
     if (typeof details === 'string') return [details];
-    if (typeof details === 'object') return Object.entries(details).map(([k, v]) => `${k}:${v}`);
+    if (typeof details === 'object') {
+        // Prende solo la prima chiave disponibile
+        const firstKey = Object.keys(details)[0];
+        if (firstKey) {
+            return [`${firstKey}:${details[firstKey]}`];
+        }
+    }
     return null;
 }
 
