@@ -217,56 +217,67 @@ async function buildChannels() {
     const newChannels = [], newGenres = new Set(), uaznaoNormalizedNames = new Set();
 
     // --- Uaznao ---
+    let uaznaoArray = null;
     if (UAZNAO_URL) {
         console.log('[Uaznao] Download...');
         try {
             const { data } = await axios.get(UAZNAO_URL, { timeout: 30000 });
-            if (!Array.isArray(data)) {
-                console.error('[Uaznao] La risposta non è un array.');
-                return;
-            }
-            for (const item of data) {
-                const name = item.channelName;
-                if (!name) continue;  // Salta se manca channelName
-                if (!isItalianChannel(name)) continue;
-
-                // Controllo sicuro della categoria
-                const excludeCategories = ['portogallo', 'uk', 'tnt sports'];
-                if (item.category && excludeCategories.includes(item.category.toLowerCase())) continue;
-                if (name.toLowerCase().includes('[uk]') || name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
-
-                const category = getCategory(name);
-                const clearkeys = extractClearkeyUaznao(item.url);
-                const cleanUrl = (item.url || '').replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
-                const streamUrl = buildStreamUrl(cleanUrl, clearkeys);
-
-                const epgInfo = findEpgInfo(name);
-                const tvgId = epgInfo.tvgId || '';
-                let logo = '';
-
-                if (name.toLowerCase().startsWith('lba')) {
-                    logo = LBA_LOGO;
-                } else if (name.toLowerCase().startsWith('sky ')) {
-                    if (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) {
-                        logo = epgInfo.logo;
-                    } else {
-                        logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
-                    }
-                } else {
-                    logo = epgInfo.logo || '';
+            if (Array.isArray(data)) {
+                uaznaoArray = data;
+            } else if (data && typeof data === 'object') {
+                const possibleArrays = Object.values(data).filter(v => Array.isArray(v));
+                if (possibleArrays.length > 0) {
+                    uaznaoArray = possibleArrays[0];
+                    console.log('[Uaznao] Usato array interno trovato.');
                 }
-
-                const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
-
-                newChannels.push({
-                    id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
-                    type: 'tv', name, url: streamUrl, genre: category, logo: logoUrl, tvgId
-                });
-                newGenres.add(category);
-                uaznaoNormalizedNames.add(normalizeName(name));
             }
-            console.log(`[Uaznao] ${newChannels.length} canali italiani.`);
-        } catch (e) { console.error(`[Uaznao] Errore: ${e.message}`); }
+            if (!uaznaoArray) {
+                console.error('[Uaznao] Nessun array trovato nella risposta, ignoro Uaznao.');
+            }
+        } catch (e) { console.error(`[Uaznao] Errore download: ${e.message}`); }
+    }
+
+    if (uaznaoArray) {
+        for (const item of uaznaoArray) {
+            const name = item.channelName;
+            if (!name) continue;
+            if (!isItalianChannel(name)) continue;
+
+            const excludeCategories = ['portogallo', 'uk', 'tnt sports'];
+            if (item.category && excludeCategories.includes(item.category.toLowerCase())) continue;
+            if (name.toLowerCase().includes('[uk]') || name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
+
+            const category = getCategory(name);
+            const clearkeys = extractClearkeyUaznao(item.url);
+            const cleanUrl = (item.url || '').replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
+            const streamUrl = buildStreamUrl(cleanUrl, clearkeys);
+
+            const epgInfo = findEpgInfo(name);
+            const tvgId = epgInfo.tvgId || '';
+            let logo = '';
+
+            if (name.toLowerCase().startsWith('lba')) {
+                logo = LBA_LOGO;
+            } else if (name.toLowerCase().startsWith('sky ')) {
+                if (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) {
+                    logo = epgInfo.logo;
+                } else {
+                    logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
+                }
+            } else {
+                logo = epgInfo.logo || '';
+            }
+
+            const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
+
+            newChannels.push({
+                id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
+                type: 'tv', name, url: streamUrl, genre: category, logo: logoUrl, tvgId
+            });
+            newGenres.add(category);
+            uaznaoNormalizedNames.add(normalizeName(name));
+        }
+        console.log(`[Uaznao] ${newChannels.length} canali italiani.`);
     }
 
     // --- Zappr ---
@@ -274,11 +285,11 @@ async function buildChannels() {
         console.log('[Zappr] Download...');
         try {
             const { data } = await axios.get(ZAPPR_URL, { timeout: 30000 });
-            if (!data || !Array.isArray(data.channels)) {
-                console.error('[Zappr] Formato dati non valido.');
-                return;
+            const zapprChannels = Array.isArray(data) ? data : (data?.channels || []);
+            if (!zapprChannels.length) {
+                console.log('[Zappr] Nessun canale trovato.');
             }
-            for (const ch of data.channels) {
+            for (const ch of zapprChannels) {
                 const name = ch.name;
                 if (!name) continue;
                 if (!isItalianChannel(name)) continue;
@@ -406,6 +417,12 @@ async function updateChannels() {
     if (UAZNAO_URL) {
         try { uaznaoData = (await axios.get(UAZNAO_URL, { timeout: 30000 })).data; } catch {}
     }
+    if (uaznaoData) {
+        if (!Array.isArray(uaznaoData)) {
+            const possibleArrays = Object.values(uaznaoData).filter(v => Array.isArray(v));
+            uaznaoData = possibleArrays.length > 0 ? possibleArrays[0] : null;
+        }
+    }
     await buildChannels();
     scheduleNextRefresh(uaznaoData);
 }
@@ -465,8 +482,8 @@ async function run() {
             if (programmes.length) {
                 const now = new Date();
                 const current = programmes.find(p => p.start <= now && p.stop > now) || programmes[0];
-                desc += `\n\nORA IN ONDA:\n${current.title}`;
-                if (current.desc) desc += `\n${current.desc}`;
+                desc += `<br><br>ORA IN ONDA:<br>${current.title}`;
+                if (current.desc) desc += `<br>${current.desc}`;
             }
         }
 
