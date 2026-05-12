@@ -37,12 +37,12 @@ function isItalianChannel(name) {
     return !PAESI_STRANIERI.some(tag => n.includes(tag));
 }
 
-// ---------- Categorizzazione ----------
+// ---------- Categorizzazione (con le tue ultime modifiche) ----------
 const CATEGORY_KEYWORDS = {
     "Rai": ["rai"],
     "Mediaset": ["twenty seven", "twentyseven", "mediaset", "italia 1", "italia 2", "canale 5", "la 5", "cine 34", "top crime", "iris", "focus", "rete 4"],
     "Sport": ["inter", "milan", "lazio", "calcio", "tennis", "sport", "sportitalia", "trsport", "sports", "super tennis", "supertennis", "dazn", "eurosport", "sky sport", "rai sport", "eventi", "lba"],
-    "Film - Serie TV": ["crime", "primafila", "cinema", "movie", "film", "serie", "hbo", "fox", "rakuten", "atlantic", "collection", "investigation", "sky uno" ],
+    "Film - Serie TV": ["crime", "primafila", "cinema", "movie", "film", "serie", "hbo", "fox", "rakuten", "atlantic", "collection", "investigation", "sky uno"],
     "News": ["news", "tg", "rai news", "sky tg", "tgcom", "euronews"],
     "Bambini": ["frisbee", "super!", "fresbee", "k2", "cartoon", "boing", "nick", "disney", "baby", "rai yoyo", "cartoonito", "kids"],
     "Documentari": ["documentaries", "discovery", "geo", "history", "nat geo", "nature", "arte", "documentary", "adventure"],
@@ -214,13 +214,11 @@ function buildStreamUrl(streamUrl, clearkeys, disableSsl = false) {
     return `${EASYPROXY_URL}/proxy/manifest.m3u8?${params.toString()}`;
 }
 
-// ---------- Fetch & merge (priorità Uaznao, confronto per titolo) ----------
+// ---------- Fetch & merge (priorità Uaznao, titolo esatto) ----------
 async function buildChannels() {
-    const newChannels = [];
-    const newGenres = new Set();
-    const uaznaoTitles = new Set();   // titoli già presenti in Uaznao (lowercase)
+    const newChannels = [], newGenres = new Set(), uaznaoTitles = new Set();
 
-    // --- Uaznao (priorità assoluta) ---
+    // --- Uaznao (priorità assoluta, tutti i canali validi) ---
     let uaznaoArray = null;
     if (UAZNAO_URL) {
         console.log('[Uaznao] Download...');
@@ -232,13 +230,11 @@ async function buildChannels() {
                 const possibleArrays = Object.values(data).filter(v => Array.isArray(v));
                 if (possibleArrays.length > 0) {
                     uaznaoArray = possibleArrays[0];
-                    console.log('[Uaznao] Usato array interno trovato.');
+                    console.log('[Uaznao] Usato array interno.');
                 }
             }
-            if (!uaznaoArray) {
-                console.error('[Uaznao] Nessun array trovato nella risposta, ignoro Uaznao.');
-            }
-        } catch (e) { console.error(`[Uaznao] Errore download: ${e.message}`); }
+            if (!uaznaoArray) console.error('[Uaznao] Nessun array trovato.');
+        } catch (e) { console.error(`[Uaznao] Errore: ${e.message}`); }
     }
 
     if (uaznaoArray) {
@@ -247,9 +243,10 @@ async function buildChannels() {
             if (!name) continue;
             if (!isItalianChannel(name)) continue;
 
+            // Esclusioni indesiderate minime
+            if (name.toLowerCase().includes('[uk]') || name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
             const excludeCategories = ['portogallo', 'uk', 'tnt sports'];
             if (item.category && excludeCategories.includes(item.category.toLowerCase())) continue;
-            if (name.toLowerCase().includes('[uk]') || name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
 
             const category = getCategory(name);
             const clearkeys = extractClearkeyUaznao(item.url);
@@ -279,7 +276,7 @@ async function buildChannels() {
                 type: 'tv', name, url: streamUrl, genre: category, logo: logoUrl, tvgId
             });
             newGenres.add(category);
-            uaznaoTitles.add(name.toLowerCase());   // memorizza titolo esatto
+            uaznaoTitles.add(name.toLowerCase());
         }
         console.log(`[Uaznao] ${newChannels.length} canali italiani.`);
     }
@@ -290,51 +287,36 @@ async function buildChannels() {
         try {
             const { data } = await axios.get(ZAPPR_URL, { timeout: 30000 });
             const zapprChannels = Array.isArray(data) ? data : (data?.channels || []);
-            if (!zapprChannels.length) {
-                console.log('[Zappr] Nessun canale trovato.');
-            }
             for (const ch of zapprChannels) {
                 const name = (ch.name || '').trim();
                 if (!name) continue;
                 if (!isItalianChannel(name)) continue;
-                // Salta se il titolo è già presente in Uaznao
                 if (uaznaoTitles.has(name.toLowerCase())) continue;
-                
-                // Salta canali indesiderati
+
+                // Esclusioni canali non italiani o indesiderati
                 if (name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
 
-                // Supporta solo tipi stream gestibili: hls, dash, direct
-                const supportedTypes = ['hls', 'dash', 'direct'];
-                if (!ch.type || !supportedTypes.includes(ch.type)) continue;
+                // Accetta tutti i tipi tranne quelli non proxyabili
+                const unsupportedTypes = ['iframe', 'youtube', 'twitch', 'popup'];
+                if (!ch.type || unsupportedTypes.includes(ch.type)) continue;
 
-                // Salta canali con licenze non supportate (xdevel-wms, rai-akamai)
-                if (ch.license === 'xdevel-wms' || ch.license === 'rai-akamai') continue;
-
-                // Determina URL e clearkey
+                // Determina URL (geoblock prioritario)
                 let urlToUse = ch.url;
                 let licensedetails = ch.licensedetails;
-
-                // Se c'è geoblock, usa l'URL geoblock e i suoi parametri di licenza
                 if (ch.geoblock && ch.geoblock.url && ch.geoblock.url !== true) {
                     urlToUse = ch.geoblock.url;
-                    // Il geoblock può avere una propria licenza
-                    if (ch.geoblock.licensedetails) {
-                        licensedetails = ch.geoblock.licensedetails;
-                    }
+                    if (ch.geoblock.licensedetails) licensedetails = ch.geoblock.licensedetails;
                 }
-
                 if (!urlToUse || urlToUse.startsWith('zappr://')) continue;
 
-                // Estrai clearkey (solo se il canale ha license === 'clearkey')
+                // Gestione DRM
                 let clearkeys = null;
                 if (ch.license === 'clearkey' || (ch.geoblock && ch.geoblock.license === 'clearkey')) {
                     clearkeys = extractClearkeyZappr(licensedetails);
-                    if (!clearkeys) continue;  // salta se le chiavi non sono valide (multiple o assenti)
-                }
+                    if (!clearkeys) continue; // chiavi multiple o assenti
+                } // altrimenti nessuna licenza DRM (canali in chiaro)
 
-                // Disabilita SSL per alcuni host problematici
                 const disableSsl = urlToUse.includes('uvotv.zappr.stream') || urlToUse.includes('netplus.zappr.stream');
-
                 const streamUrl = buildStreamUrl(urlToUse, clearkeys || [], disableSsl);
 
                 const category = getCategory(name);
@@ -353,7 +335,6 @@ async function buildChannels() {
                 } else {
                     logo = epgInfo.logo || '';
                 }
-                // Se non c'è logo EPG, prova con il logo Zappr
                 if (!logo && ch.logo) {
                     logo = `https://channels.zappr.stream/logos/it/optimized/${ch.logo}`;
                 }
@@ -366,7 +347,7 @@ async function buildChannels() {
                 });
                 newGenres.add(category);
             }
-            console.log(`[Zappr] ${newChannels.length} canali italiani aggiunti.`);
+            console.log(`[Zappr] ${newChannels.length} canali italiani.`);
         } catch (e) { console.error(`[Zappr] Errore: ${e.message}`); }
     }
 
@@ -378,51 +359,29 @@ async function buildChannels() {
 // ---------- Scheduling intelligente ----------
 function getSkyCinemaExpiry(uaznaoData) {
     if (!uaznaoData || !Array.isArray(uaznaoData)) return null;
-
     const possibleNames = ['Sky Cinema Uno', 'Sky Cinema 1'];
-    
-    let skyCinema = null;
     for (const targetName of possibleNames) {
-        skyCinema = uaznaoData.find(item => 
-            item.channelName && 
-            item.channelName.toLowerCase().trim() === targetName.toLowerCase()
-        );
-        if (skyCinema) break;
+        const skyCinema = uaznaoData.find(item => item.channelName && item.channelName.toLowerCase().trim() === targetName.toLowerCase());
+        if (skyCinema && skyCinema.expiresAt) {
+            const d = new Date(skyCinema.expiresAt);
+            if (!isNaN(d.getTime())) {
+                console.log(`[Scheduler] Trovato Sky Cinema Uno, scadenza: ${d.toISOString()}`);
+                return d;
+            }
+        }
     }
-
-    if (skyCinema) {
-        console.log(`[Scheduler] Trovato canale: ${skyCinema.channelName}, scadenza: ${skyCinema.expiresAt}`);
-    } else {
-        console.log(`[Scheduler] Sky Cinema Uno/1 NON trovato nella lista Uaznao.`);
-        return null;
-    }
-
-    if (!skyCinema.expiresAt) {
-        console.log(`[Scheduler] ${skyCinema.channelName} non ha data di scadenza.`);
-        return null;
-    }
-
-    const d = new Date(skyCinema.expiresAt);
-    if (isNaN(d.getTime())) {
-        console.log(`[Scheduler] Data di scadenza non valida per ${skyCinema.channelName}: ${skyCinema.expiresAt}`);
-        return null;
-    }
-
-    return d;
+    return null;
 }
 
 function scheduleNextRefresh(uaznaoData) {
     if (refreshTimer) clearTimeout(refreshTimer);
-
     let delayMs;
     const skyExpiry = getSkyCinemaExpiry(uaznaoData);
-
     if (skyExpiry) {
         const targetMs = skyExpiry.getTime() + 60 * 60 * 1000;
         delayMs = targetMs - Date.now();
         if (delayMs < 300000) delayMs = 300000;
-        console.log(`[Scheduler] Scadenza Sky Cinema Uno: ${skyExpiry.toISOString()}`);
-        console.log(`[Scheduler] Refresh programmato per: ${new Date(targetMs).toISOString()} (locale: ${new Date(targetMs).toLocaleString()})`);
+        console.log(`[Scheduler] Refresh tra ${Math.round(delayMs / 60000)} min (Sky Cinema Uno +1h).`);
     } else {
         const now = new Date();
         let next = null;
@@ -435,29 +394,24 @@ function scheduleNextRefresh(uaznaoData) {
             }
         }
         if (next) {
-            const target = next.getTime() - 5 * 60 * 1000;
-            delayMs = Math.max(60_000, target - Date.now());
-            console.log(`[Scheduler] Nessun Sky Cinema Uno, uso prima scadenza: ${next.toISOString()}`);
+            delayMs = Math.max(60_000, next.getTime() - 5 * 60 * 1000 - Date.now());
+            console.log(`[Scheduler] Nessun Sky Cinema Uno, uso prima scadenza.`);
         } else {
             delayMs = REFRESH_INTERVAL_MIN * 60 * 1000;
-            console.log(`[Scheduler] Nessuna scadenza, refresh ogni ${REFRESH_INTERVAL_MIN} min`);
+            console.log(`[Scheduler] Nessuna scadenza, refresh ogni ${REFRESH_INTERVAL_MIN} min.`);
         }
     }
-
-    console.log(`[Scheduler] Prossimo refresh tra ${Math.round(delayMs / 60000)} minuti.`);
     refreshTimer = setTimeout(() => updateChannels(), delayMs);
 }
 
 async function updateChannels() {
-    console.log('[Update] Inizio aggiornamento canali...');
+    console.log('[Update] Inizio aggiornamento...');
     let uaznaoData = null;
     if (UAZNAO_URL) {
         try { uaznaoData = (await axios.get(UAZNAO_URL, { timeout: 30000 })).data; } catch {}
-    }
-    if (uaznaoData) {
-        if (!Array.isArray(uaznaoData)) {
-            const possibleArrays = Object.values(uaznaoData).filter(v => Array.isArray(v));
-            uaznaoData = possibleArrays.length > 0 ? possibleArrays[0] : null;
+        if (uaznaoData && !Array.isArray(uaznaoData)) {
+            const arr = Object.values(uaznaoData).find(v => Array.isArray(v));
+            uaznaoData = arr || null;
         }
     }
     await buildChannels();
@@ -471,7 +425,7 @@ function scheduleEPG() {
     const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 2, 0, 0, 0));
     if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
     const delay = next.getTime() - now.getTime();
-    console.log(`[EPG] Prossimo aggiornamento programmi alle ${next.toISOString()} (tra ${Math.round(delay / 60000)} min)`);
+    console.log(`[EPG] Prossimo aggiornamento alle ${next.toISOString()}`);
     setTimeout(() => { updateEPG(); scheduleEPG(); }, delay);
 }
 
@@ -512,18 +466,16 @@ async function run() {
     builder.defineMetaHandler(async ({ id }) => {
         const ch = channels.find(c => c.id === id);
         if (!ch) return { meta: null };
-
         let desc = `Categoria: ${ch.genre}`;
         if (ch.tvgId && epgData[ch.tvgId]) {
             const programmes = epgData[ch.tvgId];
             if (programmes.length) {
                 const now = new Date();
                 const current = programmes.find(p => p.start <= now && p.stop > now) || programmes[0];
-                desc += `                       ORA IN ONDA: ${current.title}`;
-                if (current.desc) desc += ` - ${current.desc}`;
+                desc += `\n\nORA IN ONDA:\n${current.title}`;
+                if (current.desc) desc += `\n${current.desc}`;
             }
         }
-
         return { meta: { id: ch.id, type: 'tv', name: ch.name, poster: ch.logo, posterShape: 'landscape', background: ch.logo, description: desc, genres: [ch.genre] } };
     });
 
@@ -535,7 +487,6 @@ async function run() {
     });
 
     const app = express();
-
     app.get('/logo', async (req, res) => {
         const { url, name } = req.query;
         if (!url) { res.type('svg').send(makePlaceholderSVG(name)); return; }
@@ -545,12 +496,10 @@ async function run() {
             res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' }).send(resized);
         } catch { res.type('svg').send(makePlaceholderSVG(name || 'Logo')); }
     });
-
     function makePlaceholderSVG(text) {
         const safe = (text || 'Canale').replace(/&/g, '&amp;').replace(/</g, '&lt;');
         return Buffer.from(`<svg width="320" height="180" xmlns="http://www.w3.org/2000/svg"><rect fill="#1a1a1a" width="320" height="180"/><text fill="#ffffff" font-family="Arial" font-size="20" x="160" y="90" text-anchor="middle" dominant-baseline="middle">${safe}</text></svg>`);
     }
-
     app.use((req, res, next) => { res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Access-Control-Allow-Headers', '*'); res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS'); if (req.method === 'OPTIONS') return res.sendStatus(200); next(); });
     app.get('/manifest.json', (req, res) => { const m = builder.getInterface().manifest; m.catalogs[0].extra[0].options = Array.from(genres).sort(); res.json(m); });
     iface = builder.getInterface();
