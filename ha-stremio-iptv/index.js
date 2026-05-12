@@ -36,7 +36,7 @@ function isItalianChannel(name) {
     return !PAESI_STRANIERI.some(tag => n.includes(tag));
 }
 
-// ---------- Categorizzazione (LBA in Sport) ----------
+// ---------- Categorizzazione ----------
 const CATEGORY_KEYWORDS = {
     "Rai": ["rai"],
     "Mediaset": ["twenty seven", "twentyseven", "mediaset", "italia 1", "italia 2", "canale 5", "la 5", "cine 34", "top crime", "iris", "focus", "rete 4"],
@@ -68,33 +68,38 @@ const LBA_LOGO = 'https://cdn-ukwest.onetrust.com/logos/f5e93496-e77f-4ca2-8146-
 // ---------- Utility ----------
 function cleanNameForComparison(name) {
     if (!name) return "";
-    return name
-        .toLowerCase()
-        .replace(/\s*\+?\d+\s*/g, '')
-        .replace(/\bhd\b|\bfullhd\b|\b4k\b/gi, '')
-        .replace(/\bmaratone\b/gi, '')
-        .replace(/[^a-z0-9À-ÿ\s]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
+    return name.toLowerCase().replace(/\s*\+?\d+\s*/g, '').replace(/\bhd\b|\bfullhd\b|\b4k\b/gi, '').replace(/\bmaratone\b/gi, '').replace(/[^a-z0-9À-ÿ\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 
 function normalizeName(name) {
     if (!name) return "";
-    let n = name.toLowerCase();
-    n = n.replace(/\s+/g, '');
-    n = n.replace(/\[.*?\]/g, '');
-    n = n.replace(/\(.*?\)/g, '');
-    n = n.replace(/\.it\b/g, '');
-    n = n.replace(/hd|fullhd/gi, '');
-    n = n.replace(/[^a-z0-9À-ÿ]/g, '');
-    return n;
+    let n = name.toLowerCase().replace(/\s+/g, '').replace(/\[.*?\]/g, '').replace(/\(.*?\)/g, '').replace(/\.it\b/g, '').replace(/hd|fullhd/gi, '');
+    return n.replace(/[^a-z0-9À-ÿ]/g, '');
+}
+
+// Converte una stringa data EPG in un oggetto Date UTC
+function parseDateUTC(dateStr) {
+    if (!dateStr) return new Date();
+    // Formato tipico: "20260512000500 +0000"
+    const match = dateStr.match(/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*([+-]\d{4})?/);
+    if (match) {
+        const [, y, m, d, h, min, s, offset] = match;
+        const date = new Date(Date.UTC(+y, +m - 1, +d, +h, +min, +s));
+        if (offset) {
+            // Applica l'offset manualmente (anche se di solito è +0000)
+            const offsetMin = (offset[0] === '+' ? 1 : -1) * (parseInt(offset.slice(1, 3)) * 60 + parseInt(offset.slice(3, 5)));
+            date.setUTCMinutes(date.getUTCMinutes() - offsetMin);
+        }
+        return date;
+    }
+    return new Date(dateStr);  // fallback
 }
 
 // ---------- Stato globale ----------
 let channels = [];
 let genres = new Set();
-let epgMap = {};      // normalizedName → { tvgId, logo, originalName }
-let epgData = {};     // tvgId → programmes[]
+let epgMap = {};
+let epgData = {};
 let refreshTimer = null;
 
 // ---------- EPG ----------
@@ -112,8 +117,7 @@ async function updateEPG() {
     try {
         const xml = await downloadEPG(EPG_URL);
         const parsed = await new xml2js.Parser().parseStringPromise(xml);
-        const newMap = {};
-        const newData = {};
+        const newMap = {}, newData = {};
 
         if (parsed.tv?.channel) {
             for (const ch of parsed.tv.channel) {
@@ -121,25 +125,16 @@ async function updateEPG() {
                 let name = '';
                 if (ch['display-name']) {
                     const first = ch['display-name'][0];
-                    if (typeof first === 'string') {
-                        name = first;
-                    } else if (typeof first === 'object' && first._) {
-                        name = first._;
-                    }
+                    if (typeof first === 'string') name = first;
+                    else if (typeof first === 'object' && first._) name = first._;
                 }
                 let icon = '';
                 if (ch.icon && Array.isArray(ch.icon)) {
                     for (const ic of ch.icon) {
-                        if (ic.$ && ic.$.src) {
-                            icon = ic.$.src;
-                            break;
-                        }
+                        if (ic.$ && ic.$.src) { icon = ic.$.src; break; }
                     }
                 }
-                if (id && name) {
-                    const norm = normalizeName(name);
-                    newMap[norm] = { tvgId: id, logo: icon, originalName: name };
-                }
+                if (id && name) newMap[normalizeName(name)] = { tvgId: id, logo: icon, originalName: name };
             }
         }
 
@@ -150,8 +145,8 @@ async function updateEPG() {
                 newData[chId].push({
                     title: p.title?.[0]?._ || p.title?.[0] || 'Senza titolo',
                     desc: p.desc?.[0]?._ || p.desc?.[0] || '',
-                    start: new Date(p.$.start),
-                    stop: new Date(p.$.stop)
+                    start: parseDateUTC(p.$.start),
+                    stop: parseDateUTC(p.$.stop)
                 });
             }
         }
@@ -164,88 +159,58 @@ async function updateEPG() {
     }
 }
 
-// ---------- Ricerca EPG SICURA ----------
+// Ricerca EPG (invariata)
 function findEpgInfo(channelName) {
     if (!epgMap || Object.keys(epgMap).length === 0) return {};
-
     const originalLower = channelName.toLowerCase().trim();
     const searchFor = NAME_ALIASES[originalLower] || originalLower;
 
-    // 1. Match esatto con originalName EPG
     for (const entry of Object.values(epgMap)) {
-        if (entry.originalName.toLowerCase() === searchFor) {
-            return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
-        }
+        if (entry.originalName.toLowerCase() === searchFor) return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
     }
-
-    // 2. Match dei nomi puliti
     const searchClean = cleanNameForComparison(searchFor);
     for (const entry of Object.values(epgMap)) {
-        const epgClean = cleanNameForComparison(entry.originalName);
-        if (epgClean === searchClean) {
-            return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
-        }
+        if (cleanNameForComparison(entry.originalName) === searchClean) return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
     }
-
-    // 3. Contenimento (l'EPG contiene il nome cercato)
     for (const entry of Object.values(epgMap)) {
         const epgClean = cleanNameForComparison(entry.originalName);
-        if (epgClean.length >= searchClean.length && epgClean.includes(searchClean)) {
-            return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
-        }
+        if (epgClean.includes(searchClean) || searchClean.includes(epgClean)) return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
     }
-
-    // 4. Contenimento inverso
-    for (const entry of Object.values(epgMap)) {
-        const epgClean = cleanNameForComparison(entry.originalName);
-        if (searchClean.length >= epgClean.length && searchClean.includes(epgClean)) {
-            return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
-        }
-    }
-
     return {};
 }
 
-// ---------- Estrazione clearkey ----------
+// Estrazione clearkey (invariata)
 function extractClearkeyUaznao(url) {
     try {
         const m = url.match(/ck=([^&\s]+)/);
         if (!m) return [];
         const decoded = Buffer.from(m[1], 'base64').toString('utf-8');
         const parts = decoded.split(':');
-        if (parts.length >= 2) return [`${parts[0]}:${parts[1]}`];
-    } catch {}
-    return [];
+        return parts.length >= 2 ? [`${parts[0]}:${parts[1]}`] : [];
+    } catch { return []; }
 }
 
 function extractClearkeyZappr(details) {
     if (!details) return null;
     if (typeof details === 'string') return [details];
-    if (typeof details === 'object') {
-        return Object.entries(details).map(([k, v]) => `${k}:${v}`);
-    }
+    if (typeof details === 'object') return Object.entries(details).map(([k, v]) => `${k}:${v}`);
     return null;
 }
 
-// ---------- Costruzione URL EasyProxy ----------
+// Costruzione URL EasyProxy (invariata)
 function buildStreamUrl(streamUrl, clearkeys, disableSsl = false) {
     const params = new URLSearchParams();
     params.set('url', streamUrl);
     if (EASYPROXY_PASSWORD) params.set('api_password', EASYPROXY_PASSWORD);
-    if (clearkeys) {
-        for (const ck of clearkeys) params.append('clearkey', ck);
-    }
+    if (clearkeys) clearkeys.forEach(ck => params.append('clearkey', ck));
     if (disableSsl) params.set('disable_ssl', '1');
     return `${EASYPROXY_URL}/proxy/manifest.m3u8?${params.toString()}`;
 }
 
 // ---------- Fetch & merge ----------
 async function buildChannels() {
-    const newChannels = [];
-    const newGenres = new Set();
-    const uaznaoNormalizedNames = new Set();
+    const newChannels = [], newGenres = new Set(), uaznaoNormalizedNames = new Set();
 
-    // --- Uaznao ---
     if (UAZNAO_URL) {
         console.log('[Uaznao] Download...');
         try {
@@ -254,11 +219,9 @@ async function buildChannels() {
                 const name = item.channelName;
                 if (!isItalianChannel(name)) continue;
 
-                // Rimuovi canali con categoria indesiderata
                 const excludeCategories = ['portogallo', 'uk', 'tnt sports'];
                 if (item.category && excludeCategories.includes(item.category.toLowerCase())) continue;
-                // Rimuovi canali con [UK] nel nome
-                if (name.toLowerCase().includes('[uk]')) continue;
+                if (name.toLowerCase().includes('[uk]') || name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
 
                 const category = getCategory(name);
                 const clearkeys = extractClearkeyUaznao(item.url);
@@ -266,68 +229,7 @@ async function buildChannels() {
                 const streamUrl = buildStreamUrl(cleanUrl, clearkeys);
 
                 const epgInfo = findEpgInfo(name);
-                const tvgId = epgInfo.tvgId || normalizeName(name);
-                let logo = '';
-
-                // Logo per LBA
-                if (name.toLowerCase().startsWith('lba')) {
-                    logo = LBA_LOGO;
-                }
-                // Logo per canali Sky: solo se EPG restituisce un logo e il nome EPG inizia con "sky"
-                else if (name.toLowerCase().startsWith('sky ')) {
-                    if (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) {
-                        logo = epgInfo.logo;
-                    } else {
-                        logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
-                    }
-                }
-                // Altri canali: prendi logo EPG normalmente
-                else {
-                    logo = epgInfo.logo || '';
-                }
-
-                const logoUrl = logo
-                    ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}`
-                    : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
-
-                newChannels.push({
-                    id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
-                    type: 'tv',
-                    name: name,
-                    url: streamUrl,
-                    genre: category,
-                    logo: logoUrl,
-                    tvgId: tvgId
-                });
-                newGenres.add(category);
-                uaznaoNormalizedNames.add(normalizeName(name));
-            }
-            console.log(`[Uaznao] ${newChannels.length} canali italiani.`);
-        } catch (e) { console.error(`[Uaznao] Errore: ${e.message}`); }
-    }
-
-    // --- Zappr ---
-    if (ZAPPR_URL) {
-        console.log('[Zappr] Download...');
-        try {
-            const { data } = await axios.get(ZAPPR_URL, { timeout: 30000 });
-            for (const ch of (data.channels || [])) {
-                const name = ch.name;
-                if (!isItalianChannel(name)) continue;
-
-                if (uaznaoNormalizedNames.has(normalizeName(name))) continue;
-
-                const category = getCategory(name);
-                const urlToUse = (ch.geoblock?.url && ch.geoblock.url !== true) ? ch.geoblock.url : ch.url;
-                if (!urlToUse || urlToUse.startsWith('zappr://')) continue;
-
-                const clearkeys = extractClearkeyZappr(ch.licensedetails);
-                if (!clearkeys) continue;
-
-                const streamUrl = buildStreamUrl(urlToUse, clearkeys, true);
-
-                const epgInfo = findEpgInfo(name);
-                const tvgId = epgInfo.tvgId || normalizeName(name);
+                const tvgId = epgInfo.tvgId || '';
                 let logo = '';
 
                 if (name.toLowerCase().startsWith('lba')) {
@@ -342,18 +244,59 @@ async function buildChannels() {
                     logo = epgInfo.logo || '';
                 }
 
-                const logoUrl = logo
-                    ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}`
-                    : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
+                const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
 
                 newChannels.push({
                     id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
-                    type: 'tv',
-                    name: name,
-                    url: streamUrl,
-                    genre: category,
-                    logo: logoUrl,
-                    tvgId: tvgId
+                    type: 'tv', name, url: streamUrl, genre: category, logo: logoUrl, tvgId
+                });
+                newGenres.add(category);
+                uaznaoNormalizedNames.add(normalizeName(name));
+            }
+            console.log(`[Uaznao] ${newChannels.length} canali italiani.`);
+        } catch (e) { console.error(`[Uaznao] Errore: ${e.message}`); }
+    }
+
+    if (ZAPPR_URL) {
+        console.log('[Zappr] Download...');
+        try {
+            const { data } = await axios.get(ZAPPR_URL, { timeout: 30000 });
+            for (const ch of (data.channels || [])) {
+                const name = ch.name;
+                if (!isItalianChannel(name)) continue;
+                if (uaznaoNormalizedNames.has(normalizeName(name))) continue;
+                if (name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
+
+                const category = getCategory(name);
+                const urlToUse = (ch.geoblock?.url && ch.geoblock.url !== true) ? ch.geoblock.url : ch.url;
+                if (!urlToUse || urlToUse.startsWith('zappr://')) continue;
+
+                const clearkeys = extractClearkeyZappr(ch.licensedetails);
+                if (!clearkeys) continue;
+
+                const streamUrl = buildStreamUrl(urlToUse, clearkeys, true);
+
+                const epgInfo = findEpgInfo(name);
+                const tvgId = epgInfo.tvgId || '';
+                let logo = '';
+
+                if (name.toLowerCase().startsWith('lba')) {
+                    logo = LBA_LOGO;
+                } else if (name.toLowerCase().startsWith('sky ')) {
+                    if (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) {
+                        logo = epgInfo.logo;
+                    } else {
+                        logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
+                    }
+                } else {
+                    logo = epgInfo.logo || '';
+                }
+
+                const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
+
+                newChannels.push({
+                    id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
+                    type: 'tv', name, url: streamUrl, genre: category, logo: logoUrl, tvgId
                 });
                 newGenres.add(category);
             }
@@ -425,23 +368,16 @@ async function run() {
     scheduleEPG();
 
     const manifest = {
-        id: 'org.iptv.arta',
-        version: '2.0.0',
-        name: 'Arta LiveTV',
-        description: 'Streaming Live TV con DRM',
-        resources: ['catalog', 'meta', 'stream'],
-        types: ['tv'],
+        id: 'org.iptv.arta', version: '2.0.0', name: 'Arta LiveTV', description: 'Streaming Live TV con DRM',
+        resources: ['catalog', 'meta', 'stream'], types: ['tv'],
         catalogs: [{
             type: 'tv', id: 'iptv_live', name: 'Canali TV',
             extra: [
                 { name: 'genre', isRequired: false, options: Array.from(genres).sort() },
-                { name: 'search', isRequired: false },
-                { name: 'skip', isRequired: false }
+                { name: 'search', isRequired: false }, { name: 'skip', isRequired: false }
             ]
         }],
-        idPrefixes: ['iptv_'],
-        behaviorHints: { configurable: false },
-        logo: "https://dl.strem.io/addon-logo.png"
+        idPrefixes: ['iptv_'], behaviorHints: { configurable: false }, logo: "https://dl.strem.io/addon-logo.png"
     };
 
     builder = new addonBuilder(manifest);
@@ -462,12 +398,14 @@ async function run() {
         if (!ch) return { meta: null };
 
         let desc = `Categoria: ${ch.genre}`;
-        const programmes = epgData[ch.tvgId];
-        if (programmes?.length) {
-            const now = new Date();
-            const current = programmes.find(p => p.start <= now && p.stop > now) || programmes[0];
-            desc += `\n\nORA IN ONDA:\n${current.title}`;
-            if (current.desc) desc += `\n${current.desc}`;
+        if (ch.tvgId && epgData[ch.tvgId]) {
+            const programmes = epgData[ch.tvgId];
+            if (programmes.length) {
+                const now = new Date(); // ora UTC (timestamp)
+                const current = programmes.find(p => p.start <= now && p.stop > now) || programmes[0];
+                desc += `\n\nORA IN ONDA:\n${current.title}`;
+                if (current.desc) desc += `\n${current.desc}`;
+            }
         }
 
         return { meta: { id: ch.id, type: 'tv', name: ch.name, poster: ch.logo, posterShape: 'landscape', background: ch.logo, description: desc, genres: [ch.genre] } };
@@ -482,7 +420,6 @@ async function run() {
 
     const app = express();
 
-    // Logo proxy
     app.get('/logo', async (req, res) => {
         const { url, name } = req.query;
         if (!url) { res.type('svg').send(makePlaceholderSVG(name)); return; }
