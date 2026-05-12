@@ -482,8 +482,8 @@ async function run() {
             if (programmes.length) {
                 const now = new Date();
                 const current = programmes.find(p => p.start <= now && p.stop > now) || programmes[0];
-                desc += `<br><br>ORA IN ONDA:<br>${current.title}`;
-                if (current.desc) desc += `<br>${current.desc}`;
+                desc += `\n\nORA IN ONDA:\n${current.title}`;
+                if (current.desc) desc += `\n${current.desc}`;
             }
         }
 
