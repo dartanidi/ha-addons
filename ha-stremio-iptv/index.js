@@ -317,10 +317,38 @@ async function buildChannels() {
 // ---------- Scheduling intelligente ----------
 function getSkyCinemaExpiry(uaznaoData) {
     if (!uaznaoData || !Array.isArray(uaznaoData)) return null;
-    const skyCinema = uaznaoData.find(item => item.channelName === 'Sky Cinema Uno');
-    if (!skyCinema || !skyCinema.expiresAt) return null;
+
+    // Possibili nomi del canale
+    const possibleNames = ['Sky Cinema Uno', 'Sky Cinema 1'];
+    
+    let skyCinema = null;
+    for (const targetName of possibleNames) {
+        skyCinema = uaznaoData.find(item => 
+            item.channelName && 
+            item.channelName.toLowerCase().trim() === targetName.toLowerCase()
+        );
+        if (skyCinema) break;
+    }
+
+    if (skyCinema) {
+        console.log(`[Scheduler] Trovato canale: ${skyCinema.channelName}, scadenza: ${skyCinema.expiresAt}`);
+    } else {
+        console.log(`[Scheduler] Sky Cinema Uno/1 NON trovato nella lista Uaznao.`);
+        return null;
+    }
+
+    if (!skyCinema.expiresAt) {
+        console.log(`[Scheduler] ${skyCinema.channelName} non ha data di scadenza.`);
+        return null;
+    }
+
     const d = new Date(skyCinema.expiresAt);
-    return isNaN(d) ? null : d;
+    if (isNaN(d.getTime())) {
+        console.log(`[Scheduler] Data di scadenza non valida per ${skyCinema.channelName}: ${skyCinema.expiresAt}`);
+        return null;
+    }
+
+    return d;
 }
 
 function scheduleNextRefresh(uaznaoData) {
