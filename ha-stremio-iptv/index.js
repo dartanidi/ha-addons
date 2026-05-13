@@ -15,7 +15,6 @@ const EPG_URL = process.env.EPG_URL;
 const REFRESH_INTERVAL_MIN = parseInt(process.env.REFRESH_INTERVAL_MIN) || 60;
 const EASYPROXY_URL = process.env.EASYPROXY_URL?.replace(/\/$/, '');
 const EASYPROXY_PASSWORD = process.env.EASYPROXY_PASSWORD;
-const SPORT99_URL = process.env.SPORT99_URL;   // URL della playlist M3U per Sport99
 
 const LOCAL_IP = process.env.LOCAL_IP || (() => {
     const ifaces = os.networkInterfaces();
@@ -57,7 +56,6 @@ const CATEGORY_KEYWORDS = {
     "Bambini": ["frisbee", "super!", "fresbee", "k2", "cartoon", "boing", "nick", "disney", "baby", "rai yoyo", "cartoonito", "kids"],
     "Documentari": ["documentaries", "discovery", "geo", "history", "nat geo", "nature", "arte", "documentary", "adventure"],
     "Musica": ["deejay", "rds", "hits", "rtl", "mtv", "vh1", "radio", "music", "kiss", "kisskiss", "m2o", "fm", "r101", "rai radio"],
-    "Sport99": [],
     "Altro": []
 };
 
@@ -65,7 +63,6 @@ function getCategory(name) {
     if (!name) return "Altro";
     const n = name.toLowerCase();
     for (const [cat, kws] of Object.entries(CATEGORY_KEYWORDS)) {
-        if (cat === 'Sport99') continue;
         if (kws.some(kw => n.includes(kw))) return cat;
     }
     return "Altro";
@@ -238,24 +235,6 @@ async function fetchNewUaznaoUrl() {
     return null;
 }
 
-// ---------- Lista desiderata Sport99 ----------
-const SPORT99_DESIRED = [
-    "DAZN 1", "DAZN 2",
-    "Eurosport 1", "Eurosport 2",
-    "Sky Sport 24", "Sky Sport Arena", "Sky Sport Basket", "Sky Sport Calcio",
-    "Sky Sport F1", "Sky Sport Golf", "Sky Sport Legend", "Sky Sport Max",
-    "Sky Sport Mix", "Sky Sport MotoGP", "Sky Sport Tennis", "Sky Sport Uno",
-    "Sky Sport 251", "Sky Sport 252", "Sky Sport 253", "Sky Sport 254",
-    "Sky Sport 255", "Sky Sport 256", "Sky Sport 257", "Sky Sport 258", "Sky Sport 259"
-];
-
-function normalizeSport99Name(name) {
-    // Rimpiazza "Sky Sport NBA" con "Sky Sport Basket"
-    if (name.toLowerCase() === "sky sport nba") return "Sky Sport Basket";
-    // Capitalizza le prime lettere di ogni parola (già così nella lista, ma per sicurezza)
-    return name.replace(/\b\w/g, c => c.toUpperCase());
-}
-
 // ---------- Fetch & merge ----------
 async function buildChannels() {
     const newChannels = [], newGenres = new Set(), allTitles = new Set();
@@ -398,67 +377,6 @@ async function buildChannels() {
         } catch (e) { console.error(`[Zappr] Errore: ${e.message}`); }
     }
 
-    // --- Sport99 (da playlist M3U) ---
-    if (SPORT99_URL) {
-        console.log('[Sport99] Download playlist...');
-        try {
-            const { data } = await axios.get(SPORT99_URL, { timeout: 30000 });
-            const lines = data.split('\n');
-            const sport99Channels = new Map(); // key: nome normalizzato, value: oggetto canale
-
-            let currentExtinf = '';
-            for (const line of lines) {
-                const clean = line.trim();
-                if (clean.startsWith('#EXTINF:')) {
-                    currentExtinf = clean;
-                } else if (clean.startsWith('https://') && currentExtinf) {
-                    const nameMatch = currentExtinf.match(/\(([^)]+)\)$/);
-                    const tvgLogoMatch = currentExtinf.match(/tvg-logo="([^"]+)"/);
-                    const rawName = nameMatch ? nameMatch[1].trim() : '';
-                    const normalized = normalizeSport99Name(rawName);
-                    
-                    // Controlla se è nella lista desiderata
-                    if (!SPORT99_DESIRED.includes(normalized)) {
-                        currentExtinf = '';
-                        continue;
-                    }
-
-                    // Se già abbiamo questo canale, saltalo (primo trovato)
-                    if (sport99Channels.has(normalized)) {
-                        currentExtinf = '';
-                        continue;
-                    }
-
-                    const streamUrl = buildStreamUrl(clean, []);
-                    const category = 'Sport99';
-                    const epgInfo = findEpgInfo(normalized);
-                    const tvgId = epgInfo.tvgId || '';
-                    let logo = epgInfo.logo || (tvgLogoMatch ? tvgLogoMatch[1] : '');
-
-                    if (!logo && normalized.toLowerCase().startsWith('sky ')) {
-                        logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
-                    }
-
-                    const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(normalized)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(normalized)}`;
-
-                    sport99Channels.set(normalized, {
-                        id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
-                        type: 'tv', name: normalized, url: streamUrl, genre: category, logo: logoUrl, tvgId
-                    });
-
-                    currentExtinf = '';
-                }
-            }
-
-            // Aggiungiamo i canali Sport99 (senza filtrare duplicati con Uaznao/Zappr)
-            for (const ch of sport99Channels.values()) {
-                newChannels.push(ch);
-                newGenres.add('Sport99');
-            }
-            console.log(`[Sport99] ${sport99Channels.size} canali aggiunti.`);
-        } catch (e) { console.error(`[Sport99] Errore: ${e.message}`); }
-    }
-
     channels = newChannels;
     genres = newGenres;
     console.log(`[Totale] ${channels.length} canali.`);
@@ -509,7 +427,6 @@ async function updateChannels() {
     console.log('[Update] Inizio aggiornamento...');
     await buildChannels();
 
-    // Estrai uaznaoData per lo scheduling
     let uaznaoData = null;
     if (currentUaznaoUrl) {
         try {
