@@ -17,6 +17,18 @@ const EASYPROXY_URL = process.env.EASYPROXY_URL?.replace(/\/$/, '');
 const EASYPROXY_PASSWORD = process.env.EASYPROXY_PASSWORD;
 const CDNLIVETV_URL = 'https://api.cdnlivetv.tv/api/v1/channels/?user=cdnlivetv&plan=free';
 
+const LOCAL_IP = process.env.LOCAL_IP || (() => {
+    const ifaces = os.networkInterfaces();
+    for (const name of Object.keys(ifaces)) {
+        for (const iface of ifaces[name]) {
+            if (iface.family === 'IPv4' && !iface.internal) return iface.address;
+        }
+    }
+    return '127.0.0.1';
+})();
+const LOGO_BASE_URL = process.env.LOGO_BASE_URL?.replace(/\/$/, '') || `http://${LOCAL_IP}:${PORT}/logo`;
+console.log(`[Init] Logo endpoint: ${LOGO_BASE_URL}`);
+
 // ---------- Stato globale ----------
 let channels = [];
 let genres = new Set();
@@ -25,6 +37,39 @@ let epgData = {};
 let refreshTimer = null;
 let currentUaznaoUrl = UAZNAO_URL;   // URL effettivo da usare (può cambiare con fallback)
 let lastSkyExpiry = null;            // per confrontare se la scadenza è cambiata
+
+// ---------- Filtro canali italiani ----------
+const PAESI_STRANIERI = ["[inglese]", "[hr]", "[nl]", "[pl]", "[cz]", "[de]", "[fr]", "[es]", "[pt]"];
+
+function isItalianChannel(name) {
+    if (!name) return false;
+    const n = name.toLowerCase().trim();
+    return !PAESI_STRANIERI.some(tag => n.includes(tag));
+}
+
+// ---------- Categorizzazione ----------
+const CATEGORY_KEYWORDS = {
+    "Rai": ["rai"],
+    "Mediaset": ["twenty seven", "twentyseven", "mediaset", "italia 1", "italia 2", "canale 5", "la 5", "cine 34", "top crime", "iris", "focus", "rete 4"],
+    "Sport": ["inter", "milan", "lazio", "calcio", "tennis", "sport", "sportitalia", "trsport", "sports", "super tennis", "supertennis", "dazn", "eurosport", "sky sport", "rai sport", "eventi", "lba"],
+    "Film - Serie TV": ["crime", "primafila", "cinema", "movie", "film", "serie", "hbo", "fox", "rakuten", "atlantic", "collection", "investigation", "sky uno"],
+    "News": ["news", "tg", "rai news", "sky tg", "tgcom", "euronews"],
+    "Bambini": ["frisbee", "super!", "fresbee", "k2", "cartoon", "boing", "nick", "disney", "baby", "rai yoyo", "cartoonito", "kids"],
+    "Documentari": ["documentaries", "discovery", "geo", "history", "nat geo", "nature", "arte", "documentary", "adventure"],
+    "Musica": ["deejay", "rds", "hits", "rtl", "mtv", "vh1", "radio", "music", "kiss", "kisskiss", "m2o", "fm", "r101", "rai radio"],
+    "Sport99": [],
+    "Altro": []
+};
+
+function getCategory(name) {
+    if (!name) return "Altro";
+    const n = name.toLowerCase();
+    for (const [cat, kws] of Object.entries(CATEGORY_KEYWORDS)) {
+        if (cat === 'Sport99') continue;
+        if (kws.some(kw => n.includes(kw))) return cat;
+    }
+    return "Altro";
+}
 
 // ---------- Alias EPG ----------
 const NAME_ALIASES = {
@@ -48,27 +93,8 @@ const SPORT99_NAME_MAP = {
     "sky sport nba": "Sky Sport Basket",
 };
 
-// ---------- Categorizzazione ----------
-const CATEGORY_KEYWORDS = {
-    "Rai": ["rai"], "Mediaset": ["twenty seven", "twentyseven", "mediaset", "italia 1", "italia 2", "canale 5", "la 5", "cine 34", "top crime", "iris", "focus", "rete 4"],
-    "Sport": ["inter", "milan", "lazio", "calcio", "tennis", "sport", "sportitalia", "trsport", "sports", "super tennis", "supertennis", "dazn", "eurosport", "sky sport", "rai sport", "eventi", "lba"],
-    "Film - Serie TV": ["crime", "primafila", "cinema", "movie", "film", "serie", "hbo", "fox", "rakuten", "atlantic", "collection", "investigation", "sky uno"],
-    "News": ["news", "tg", "rai news", "sky tg", "tgcom", "euronews"],
-    "Bambini": ["frisbee", "super!", "fresbee", "k2", "cartoon", "boing", "nick", "disney", "baby", "rai yoyo", "cartoonito", "kids"],
-    "Documentari": ["documentaries", "discovery", "geo", "history", "nat geo", "nature", "arte", "documentary", "adventure"],
-    "Musica": ["deejay", "rds", "hits", "rtl", "mtv", "vh1", "radio", "music", "kiss", "kisskiss", "m2o", "fm", "r101", "rai radio"],
-    "Sport99": [], "Altro": []
-};
-
-function getCategory(name) {
-    if (!name) return "Altro";
-    const n = name.toLowerCase();
-    for (const [cat, kws] of Object.entries(CATEGORY_KEYWORDS)) {
-        if (cat === 'Sport99') continue;
-        if (kws.some(kw => n.includes(kw))) return cat;
-    }
-    return "Altro";
-}
+// ---------- Logo LBA ----------
+const LBA_LOGO = 'https://cdn-ukwest.onetrust.com/logos/f5e93496-e77f-4ca2-8146-3faeb1ca757e/0198c261-d9ca-7f63-82f1-d90a5fb77e79/f8007094-53bc-462e-a2bd-d92114873064/App_Store_1280_1x.png';
 
 // ---------- Utility ----------
 function cleanNameForComparison(name) {
@@ -215,7 +241,6 @@ async function fetchNewUaznaoUrl() {
     console.log('[Fallback] Tentativo di recuperare nuovo URL Uaznao...');
     try {
         const { data } = await axios.get('https://telegra.ph/PREMIUM-TV-05-05-2', { timeout: 15000 });
-        // Cerca il link token
         const match = data.match(/https:\/\/uaznao\.com\/premium\/temp\.php\?token=([a-f0-9]+)/i);
         if (match) {
             const newToken = match[1];
@@ -240,44 +265,24 @@ async function buildChannels() {
         console.log('[Uaznao] Download...');
         try {
             const { data } = await axios.get(currentUaznaoUrl, { timeout: 30000 });
-            if (Array.isArray(data)) {
-                uaznaoArray = data;
-            } else if (data && typeof data === 'object') {
-                const possibleArrays = Object.values(data).filter(v => Array.isArray(v));
-                if (possibleArrays.length > 0) {
-                    uaznaoArray = possibleArrays[0];
-                    console.log('[Uaznao] Usato array interno.');
-                }
-            }
+            uaznaoArray = Array.isArray(data) ? data : (data && typeof data === 'object' ? Object.values(data).find(v => Array.isArray(v)) : null);
             if (!uaznaoArray) {
-                console.error('[Uaznao] Nessun array trovato. Tentativo fallback...');
+                console.error('[Uaznao] Nessun array trovato. Avvio fallback...');
                 const newUrl = await fetchNewUaznaoUrl();
                 if (newUrl) {
-                    currentUaznaoUrl = newUrl;   // aggiorna per i prossimi refresh
-                    // Riprova subito con il nuovo URL
+                    currentUaznaoUrl = newUrl;
                     const { data: newData } = await axios.get(currentUaznaoUrl, { timeout: 30000 });
-                    if (Array.isArray(newData)) {
-                        uaznaoArray = newData;
-                    } else if (newData && typeof newData === 'object') {
-                        const arr = Object.values(newData).find(v => Array.isArray(v));
-                        if (arr) uaznaoArray = arr;
-                    }
+                    uaznaoArray = Array.isArray(newData) ? newData : Object.values(newData).find(v => Array.isArray(v));
                 }
             }
         } catch (e) {
-            console.error(`[Uaznao] Errore download: ${e.message}`);
+            console.error(`[Uaznao] Errore download: ${e.message}. Avvio fallback...`);
             const newUrl = await fetchNewUaznaoUrl();
             if (newUrl) {
                 currentUaznaoUrl = newUrl;
-                // Riprova con il nuovo URL
                 try {
                     const { data: newData } = await axios.get(currentUaznaoUrl, { timeout: 30000 });
-                    if (Array.isArray(newData)) {
-                        uaznaoArray = newData;
-                    } else if (newData && typeof newData === 'object') {
-                        const arr = Object.values(newData).find(v => Array.isArray(v));
-                        if (arr) uaznaoArray = arr;
-                    }
+                    uaznaoArray = Array.isArray(newData) ? newData : Object.values(newData).find(v => Array.isArray(v));
                 } catch (e2) {
                     console.error(`[Uaznao] Anche il fallback è fallito: ${e2.message}`);
                 }
@@ -288,8 +293,7 @@ async function buildChannels() {
     if (uaznaoArray) {
         for (const item of uaznaoArray) {
             const name = (item.channelName || '').trim();
-            if (!name) continue;
-            if (!isItalianChannel(name)) continue;
+            if (!name || !isItalianChannel(name)) continue;
 
             if (name.toLowerCase().includes('[uk]') || name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
             const excludeCategories = ['portogallo', 'uk', 'tnt sports'];
@@ -336,9 +340,7 @@ async function buildChannels() {
             const zapprChannels = Array.isArray(data) ? data : (data?.channels || []);
             for (const ch of zapprChannels) {
                 const name = (ch.name || '').trim();
-                if (!name) continue;
-                if (!isItalianChannel(name)) continue;
-                if (allTitles.has(name.toLowerCase())) continue;
+                if (!name || !isItalianChannel(name) || allTitles.has(name.toLowerCase())) continue;
 
                 if (name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
 
@@ -454,20 +456,17 @@ function scheduleNextRefresh(uaznaoData) {
 
     if (skyExpiry) {
         const now = Date.now();
-        // Se la scadenza è IDENTICA alla precedente, usa 30 minuti
         if (lastSkyExpiry && skyExpiry.getTime() === lastSkyExpiry.getTime()) {
             delayMs = 30 * 60 * 1000;   // 30 minuti
             console.log(`[Scheduler] Scadenza Sky Cinema Uno invariata (${skyExpiry.toISOString()}), riprovo tra 30 min.`);
         } else {
-            // Nuova scadenza: imposta a scadenza + 1 ora (minimo 5 min)
             const targetMs = skyExpiry.getTime() + 60 * 60 * 1000;
             delayMs = targetMs - now;
             if (delayMs < 300000) delayMs = 300000;   // minimo 5 minuti
             console.log(`[Scheduler] Nuova scadenza Sky Cinema Uno: ${skyExpiry.toISOString()}, refresh tra ${Math.round(delayMs / 60000)} min.`);
         }
-        lastSkyExpiry = skyExpiry;   // memorizza per il prossimo confronto
+        lastSkyExpiry = skyExpiry;
     } else {
-        // Nessuna scadenza trovata
         delayMs = REFRESH_INTERVAL_MIN * 60 * 1000;
         console.log(`[Scheduler] Nessuna scadenza, refresh ogni ${REFRESH_INTERVAL_MIN} min.`);
         lastSkyExpiry = null;
@@ -485,18 +484,13 @@ async function updateChannels() {
     if (currentUaznaoUrl) {
         try {
             const { data } = await axios.get(currentUaznaoUrl, { timeout: 30000 });
-            if (Array.isArray(data)) {
-                uaznaoData = data;
-            } else if (data && typeof data === 'object') {
-                const arr = Object.values(data).find(v => Array.isArray(v));
-                uaznaoData = arr || null;
-            }
+            uaznaoData = Array.isArray(data) ? data : (data && typeof data === 'object' ? Object.values(data).find(v => Array.isArray(v)) : null);
         } catch {}
     }
     scheduleNextRefresh(uaznaoData);
 }
 
-// ---------- EPG giornaliero ----------
+// ---------- EPG giornaliero (02:00 UTC) ----------
 function scheduleEPG() {
     if (!EPG_URL) return;
     const now = new Date();
