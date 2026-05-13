@@ -11,6 +11,7 @@ export REFRESH_INTERVAL_MIN=$(jq --raw-output '.refresh_interval_minutes // 60' 
 export EASYPROXY_URL=$(jq --raw-output '.easyproxy_url // empty' $CONFIG_PATH)
 export EASYPROXY_PASSWORD=$(jq --raw-output '.easyproxy_password // empty' $CONFIG_PATH)
 export LOGO_BASE_URL=$(jq --raw-output '.logo_base_url // empty' $CONFIG_PATH)
+export SPORT99_URL=$(jq --raw-output '.sport99_url // empty' $CONFIG_PATH)
 
 echo "[Add-on] Avvio server Stremio sulla porta $PORT..."
 exec node /usr/src/app/index.js
