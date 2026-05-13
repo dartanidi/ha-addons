@@ -1,5 +1,5 @@
 name: "Stremio IPTV addon"
-version: "2.1.1"
+version: "2.1.2"
 slug: "stremio_iptv_addon"
 description: "Add-on Stremio per Live TV tramite M3U, EPG e routing su EasyProxy."
 arch:
@@ -17,6 +17,7 @@ options:
   uaznao_url: ""
   zappr_url: ""
   epg_url: ""
+  sport99_url: "
   refresh_interval_minutes: 60
   easyproxy_url: ""
   easyproxy_password: ""
@@ -27,6 +28,7 @@ schema:
   uaznao_url: "str?"
   zappr_url: "str?"
   epg_url: "str?"
+  sport99_url: "str?"
   refresh_interval_minutes: "int"
   easyproxy_url: "str"
   easyproxy_password: "password?"
