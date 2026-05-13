@@ -17,7 +17,7 @@ options:
   uaznao_url: ""
   zappr_url: ""
   epg_url: ""
-  sport99_url: "
+  sport99_url: ""
   refresh_interval_minutes: 60
   easyproxy_url: ""
   easyproxy_password: ""
