@@ -9,13 +9,13 @@ const os = require('os');
 
 // ---------- Configurazione ----------
 const PORT = process.env.PORT || 3000;
-const UAZNAO_URL = process.env.UAZNAO_URL;   // URL originale (può essere sovrascritto al volo)
+const UAZNAO_URL = process.env.UAZNAO_URL;
 const ZAPPR_URL = process.env.ZAPPR_URL || 'https://channels.zappr.stream/it/dtt/national.json';
 const EPG_URL = process.env.EPG_URL;
 const REFRESH_INTERVAL_MIN = parseInt(process.env.REFRESH_INTERVAL_MIN) || 60;
 const EASYPROXY_URL = process.env.EASYPROXY_URL?.replace(/\/$/, '');
 const EASYPROXY_PASSWORD = process.env.EASYPROXY_PASSWORD;
-const CDNLIVETV_URL = 'https://api.cdnlivetv.tv/api/v1/channels/?user=cdnlivetv&plan=free';
+const SPORT99_URL = process.env.SPORT99_URL;   // URL della playlist M3U per Sport99
 
 const LOCAL_IP = process.env.LOCAL_IP || (() => {
     const ifaces = os.networkInterfaces();
@@ -35,8 +35,8 @@ let genres = new Set();
 let epgMap = {};
 let epgData = {};
 let refreshTimer = null;
-let currentUaznaoUrl = UAZNAO_URL;   // URL effettivo da usare (può cambiare con fallback)
-let lastSkyExpiry = null;            // per confrontare se la scadenza è cambiata
+let currentUaznaoUrl = UAZNAO_URL;
+let lastSkyExpiry = null;
 
 // ---------- Filtro canali italiani ----------
 const PAESI_STRANIERI = ["[inglese]", "[hr]", "[nl]", "[pl]", "[cz]", "[de]", "[fr]", "[es]", "[pt]"];
@@ -74,23 +74,6 @@ function getCategory(name) {
 // ---------- Alias EPG ----------
 const NAME_ALIASES = {
     "sky sport basket": "sky sport nba",
-};
-
-// ---------- Mappa nomi API CDN -> nome visualizzato ----------
-const SPORT99_NAME_MAP = {
-    "dazn 1": "DAZN 1", "dazn 2": "DAZN 2",
-    "euro sport 1": "Eurosport 1", "euro sport 2": "Eurosport 2",
-    "sky sport 24": "Sky Sport 24", "sky sport 251": "Sky Sport 251",
-    "sky sport 252": "Sky Sport 252", "sky sport 253": "Sky Sport 253",
-    "sky sport 254": "Sky Sport 254", "sky sport 255": "Sky Sport 255",
-    "sky sport 256": "Sky Sport 256", "sky sport 257": "Sky Sport 257",
-    "sky sport 258": "Sky Sport 258", "sky sport 259": "Sky Sport 259",
-    "sky sport arena": "Sky Sport Arena", "sky sport calcio": "Sky Sport Calcio",
-    "sky sport f1": "Sky Sport F1", "sky sport golf": "Sky Sport Golf",
-    "sky sport legend": "Sky Sport Legend", "sky sport max": "Sky Sport Max",
-    "sky sport mix": "Sky Sport Mix", "sky sport motogp": "Sky Sport MotoGP",
-    "sky sport tennis": "Sky Sport Tennis", "sky sport uno": "Sky Sport Uno",
-    "sky sport nba": "Sky Sport Basket",
 };
 
 // ---------- Logo LBA ----------
@@ -255,6 +238,24 @@ async function fetchNewUaznaoUrl() {
     return null;
 }
 
+// ---------- Lista desiderata Sport99 ----------
+const SPORT99_DESIRED = [
+    "DAZN 1", "DAZN 2",
+    "Eurosport 1", "Eurosport 2",
+    "Sky Sport 24", "Sky Sport Arena", "Sky Sport Basket", "Sky Sport Calcio",
+    "Sky Sport F1", "Sky Sport Golf", "Sky Sport Legend", "Sky Sport Max",
+    "Sky Sport Mix", "Sky Sport MotoGP", "Sky Sport Tennis", "Sky Sport Uno",
+    "Sky Sport 251", "Sky Sport 252", "Sky Sport 253", "Sky Sport 254",
+    "Sky Sport 255", "Sky Sport 256", "Sky Sport 257", "Sky Sport 258", "Sky Sport 259"
+];
+
+function normalizeSport99Name(name) {
+    // Rimpiazza "Sky Sport NBA" con "Sky Sport Basket"
+    if (name.toLowerCase() === "sky sport nba") return "Sky Sport Basket";
+    // Capitalizza le prime lettere di ogni parola (già così nella lista, ma per sicurezza)
+    return name.replace(/\b\w/g, c => c.toUpperCase());
+}
+
 // ---------- Fetch & merge ----------
 async function buildChannels() {
     const newChannels = [], newGenres = new Set(), allTitles = new Set();
@@ -397,37 +398,66 @@ async function buildChannels() {
         } catch (e) { console.error(`[Zappr] Errore: ${e.message}`); }
     }
 
-    // --- Sport99 ---
-    console.log('[Sport99] Download...');
-    try {
-        const { data } = await axios.get(CDNLIVETV_URL, { timeout: 30000 });
-        if (data && Array.isArray(data.channels)) {
-            const italianChannels = data.channels.filter(ch => ch.code === 'it' && ch.status === 'online');
-            for (const ch of italianChannels) {
-                const apiName = (ch.name || '').trim().toLowerCase();
-                const displayName = SPORT99_NAME_MAP[apiName];
-                if (!displayName) continue;
+    // --- Sport99 (da playlist M3U) ---
+    if (SPORT99_URL) {
+        console.log('[Sport99] Download playlist...');
+        try {
+            const { data } = await axios.get(SPORT99_URL, { timeout: 30000 });
+            const lines = data.split('\n');
+            const sport99Channels = new Map(); // key: nome normalizzato, value: oggetto canale
 
-                if (displayName.toLowerCase().includes('spotv2') || displayName.toLowerCase().includes('tsn1') || displayName.toLowerCase().includes('tsn2') || displayName.toLowerCase().includes('tsn3') || displayName.toLowerCase().includes('tsn4') || displayName.toLowerCase().includes('tsn5')) continue;
+            let currentExtinf = '';
+            for (const line of lines) {
+                const clean = line.trim();
+                if (clean.startsWith('#EXTINF:')) {
+                    currentExtinf = clean;
+                } else if (clean.startsWith('https://') && currentExtinf) {
+                    const nameMatch = currentExtinf.match(/\(([^)]+)\)$/);
+                    const tvgLogoMatch = currentExtinf.match(/tvg-logo="([^"]+)"/);
+                    const rawName = nameMatch ? nameMatch[1].trim() : '';
+                    const normalized = normalizeSport99Name(rawName);
+                    
+                    // Controlla se è nella lista desiderata
+                    if (!SPORT99_DESIRED.includes(normalized)) {
+                        currentExtinf = '';
+                        continue;
+                    }
 
-                const streamUrl = buildStreamUrl(ch.url, []);
-                const category = 'Sport99';
-                const epgInfo = findEpgInfo(displayName);
-                const tvgId = epgInfo.tvgId || '';
-                let logo = epgInfo.logo || ch.image || '';
-                if (!logo && displayName.toLowerCase().startsWith('sky ')) {
-                    logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
+                    // Se già abbiamo questo canale, saltalo (primo trovato)
+                    if (sport99Channels.has(normalized)) {
+                        currentExtinf = '';
+                        continue;
+                    }
+
+                    const streamUrl = buildStreamUrl(clean, []);
+                    const category = 'Sport99';
+                    const epgInfo = findEpgInfo(normalized);
+                    const tvgId = epgInfo.tvgId || '';
+                    let logo = epgInfo.logo || (tvgLogoMatch ? tvgLogoMatch[1] : '');
+
+                    if (!logo && normalized.toLowerCase().startsWith('sky ')) {
+                        logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
+                    }
+
+                    const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(normalized)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(normalized)}`;
+
+                    sport99Channels.set(normalized, {
+                        id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
+                        type: 'tv', name: normalized, url: streamUrl, genre: category, logo: logoUrl, tvgId
+                    });
+
+                    currentExtinf = '';
                 }
-                const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(displayName)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(displayName)}`;
-
-                newChannels.push({
-                    id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
-                    type: 'tv', name: displayName, url: streamUrl, genre: category, logo: logoUrl, tvgId
-                });
-                newGenres.add(category);
             }
-        }
-    } catch (e) { console.error(`[Sport99] Errore: ${e.message}`); }
+
+            // Aggiungiamo i canali Sport99 (senza filtrare duplicati con Uaznao/Zappr)
+            for (const ch of sport99Channels.values()) {
+                newChannels.push(ch);
+                newGenres.add('Sport99');
+            }
+            console.log(`[Sport99] ${sport99Channels.size} canali aggiunti.`);
+        } catch (e) { console.error(`[Sport99] Errore: ${e.message}`); }
+    }
 
     channels = newChannels;
     genres = newGenres;
@@ -457,12 +487,12 @@ function scheduleNextRefresh(uaznaoData) {
     if (skyExpiry) {
         const now = Date.now();
         if (lastSkyExpiry && skyExpiry.getTime() === lastSkyExpiry.getTime()) {
-            delayMs = 30 * 60 * 1000;   // 30 minuti
+            delayMs = 30 * 60 * 1000;
             console.log(`[Scheduler] Scadenza Sky Cinema Uno invariata (${skyExpiry.toISOString()}), riprovo tra 30 min.`);
         } else {
             const targetMs = skyExpiry.getTime() + 60 * 60 * 1000;
             delayMs = targetMs - now;
-            if (delayMs < 300000) delayMs = 300000;   // minimo 5 minuti
+            if (delayMs < 300000) delayMs = 300000;
             console.log(`[Scheduler] Nuova scadenza Sky Cinema Uno: ${skyExpiry.toISOString()}, refresh tra ${Math.round(delayMs / 60000)} min.`);
         }
         lastSkyExpiry = skyExpiry;
