@@ -314,7 +314,7 @@ async function buildChannels() {
     }
 
     // --- Extra (canali locali) ---
-    const extraPath = '/share/liste/extra.json';
+    const extraPath = '/config/liste/extra.json';
     if (fs.existsSync(extraPath)) {
         console.log('[Extra] Caricamento canali locali...');
         try {
