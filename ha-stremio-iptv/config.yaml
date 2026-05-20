@@ -1,5 +1,5 @@
 name: "Stremio IPTV addon"
-version: "2.2.3"
+version: "2.2.4"
 slug: "stremio_iptv_addon"
 description: "Add-on Stremio per Live TV tramite M3U, EPG e routing su EasyProxy."
 arch:
@@ -11,6 +11,9 @@ startup: application
 boot: auto
 host_network: true
 init: false
+
+map:
+  - addon_config:rw
 
 options:
   port: 3000
