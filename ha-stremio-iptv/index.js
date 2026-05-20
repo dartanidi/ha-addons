@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const zlib = require('zlib');
 const sharp = require('sharp');
 const os = require('os');
+const fs = require('fs');   // <-- nuovo import
 
 // ---------- Configurazione ----------
 const PORT = process.env.PORT || 3000;
@@ -15,7 +16,6 @@ const EPG_URL = process.env.EPG_URL;
 const REFRESH_INTERVAL_MIN = parseInt(process.env.REFRESH_INTERVAL_MIN) || 60;
 const EASYPROXY_URL = process.env.EASYPROXY_URL?.replace(/\/$/, '');
 const EASYPROXY_PASSWORD = process.env.EASYPROXY_PASSWORD;
-const SPORT2_API_URL = 'https://api.cdnlivetv.tv/api/v1/channels/?user=cdnlivetv&plan=free';  // API Sport2
 
 const LOCAL_IP = process.env.LOCAL_IP || (() => {
     const ifaces = os.networkInterfaces();
@@ -47,7 +47,7 @@ function isItalianChannel(name) {
     return !PAESI_STRANIERI.some(tag => n.includes(tag));
 }
 
-// ---------- Categorizzazione (aggiunta "Sport2") ----------
+// ---------- Categorizzazione ----------
 const CATEGORY_KEYWORDS = {
     "Rai": ["rai"],
     "Mediaset": ["twenty seven", "twentyseven", "mediaset", "italia 1", "italia 2", "canale 5", "la 5", "cine 34", "top crime", "iris", "focus", "rete 4"],
@@ -57,7 +57,6 @@ const CATEGORY_KEYWORDS = {
     "Bambini": ["frisbee", "super!", "fresbee", "k2", "cartoon", "boing", "nick", "disney", "baby", "rai yoyo", "cartoonito", "kids"],
     "Documentari": ["documentaries", "discovery", "geo", "history", "nat geo", "nature", "arte", "documentary", "adventure"],
     "Musica": ["deejay", "rds", "hits", "rtl", "mtv", "vh1", "radio", "music", "kiss", "kisskiss", "m2o", "fm", "r101", "rai radio"],
-    "Sport2": [],   // nuova categoria
     "Altro": []
 };
 
@@ -65,7 +64,6 @@ function getCategory(name) {
     if (!name) return "Altro";
     const n = name.toLowerCase();
     for (const [cat, kws] of Object.entries(CATEGORY_KEYWORDS)) {
-        if (cat === 'Sport2') continue;  // gestita separatamente
         if (kws.some(kw => n.includes(kw))) return cat;
     }
     return "Altro";
@@ -74,55 +72,10 @@ function getCategory(name) {
 // ---------- Alias EPG ----------
 const NAME_ALIASES = {
     "sky sport basket": "sky sport nba",
-    "dazn 1": "DAZN 1",
-    "dazn 2": "DAZN 2",
-    "euro sport 1": "Eurosport 1",
-    "euro sport 2": "Eurosport 2",
 };
 
 // ---------- Logo LBA ----------
 const LBA_LOGO = 'https://cdn-ukwest.onetrust.com/logos/f5e93496-e77f-4ca2-8146-3faeb1ca757e/0198c261-d9ca-7f63-82f1-d90a5fb77e79/f8007094-53bc-462e-a2bd-d92114873064/App_Store_1280_1x.png';
-
-// ---------- Lista desiderata Sport2 ----------
-const SPORT2_DESIRED = [
-    "DAZN 1", "DAZN 2",
-    "Eurosport 1", "Eurosport 2",
-    "Sky Sport 24", "Sky Sport Arena", "Sky Sport Basket", "Sky Sport Calcio",
-    "Sky Sport F1", "Sky Sport Golf", "Sky Sport Legend", "Sky Sport Max",
-    "Sky Sport Mix", "Sky Sport MotoGP", "Sky Sport Tennis", "Sky Sport Uno",
-    "Sky Sport 251", "Sky Sport 252", "Sky Sport 253", "Sky Sport 254",
-    "Sky Sport 255", "Sky Sport 256", "Sky Sport 257", "Sky Sport 258", "Sky Sport 259"
-];
-
-// Mappa per rinominare alcuni canali dall'API
-const SPORT2_NAME_MAP = {
-    "dazn 1": "DAZN 1",
-    "dazn 2": "DAZN 2",
-    "euro sport 1": "Eurosport 1",
-    "euro sport 2": "Eurosport 2",
-    "sky sport 24": "Sky Sport 24",
-    "sky sport arena": "Sky Sport Arena",
-    "sky sport basket": "Sky Sport Basket",
-    "sky sport calcio": "Sky Sport Calcio",
-    "sky sport f1": "Sky Sport F1",
-    "sky sport golf": "Sky Sport Golf",
-    "sky sport legend": "Sky Sport Legend",
-    "sky sport max": "Sky Sport Max",
-    "sky sport mix": "Sky Sport Mix",
-    "sky sport motogp": "Sky Sport MotoGP",
-    "sky sport tennis": "Sky Sport Tennis",
-    "sky sport uno": "Sky Sport Uno",
-    "sky sport nba": "Sky Sport Basket",   // rinominato
-    "sky sport 251": "Sky Sport 251",
-    "sky sport 252": "Sky Sport 252",
-    "sky sport 253": "Sky Sport 253",
-    "sky sport 254": "Sky Sport 254",
-    "sky sport 255": "Sky Sport 255",
-    "sky sport 256": "Sky Sport 256",
-    "sky sport 257": "Sky Sport 257",
-    "sky sport 258": "Sky Sport 258",
-    "sky sport 259": "Sky Sport 259",
-};
 
 // ---------- Utility ----------
 function cleanNameForComparison(name) {
@@ -252,16 +205,16 @@ function extractClearkeyZappr(details) {
     return null;
 }
 
-// ---------- Costruzione URL EasyProxy (endpoint HLS per Sport2) ----------
-function buildStreamUrl(streamUrl, clearkeys, disableSsl = false, endpoint = '/proxy/manifest.m3u8') {
+// ---------- Costruzione URL EasyProxy ----------
+function buildStreamUrl(streamUrl, clearkeys, disableSsl = false) {
     const params = new URLSearchParams();
-    params.set('d', streamUrl || '');   // l'endpoint HLS usa 'd' invece di 'url'
+    params.set('url', streamUrl || '');
     if (EASYPROXY_PASSWORD) params.set('api_password', EASYPROXY_PASSWORD);
     if (clearkeys && clearkeys.length > 0) {
         clearkeys.forEach(ck => params.append('clearkey', ck));
     }
     if (disableSsl) params.set('disable_ssl', '1');
-    return `${EASYPROXY_URL}${endpoint}?${params.toString()}`;
+    return `${EASYPROXY_URL}/proxy/manifest.m3u8?${params.toString()}`;
 }
 
 // ---------- Fallback URL Uaznao ----------
@@ -330,7 +283,7 @@ async function buildChannels() {
             const category = getCategory(name);
             const clearkeys = extractClearkeyUaznao(item.url);
             const cleanUrl = (item.url || '').replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
-            const streamUrl = buildStreamUrl(cleanUrl, clearkeys);   // default /proxy/manifest.m3u8
+            const streamUrl = buildStreamUrl(cleanUrl, clearkeys);
 
             const epgInfo = findEpgInfo(name);
             const tvgId = epgInfo.tvgId || '';
@@ -358,6 +311,60 @@ async function buildChannels() {
             allTitles.add(name.toLowerCase());
         }
         console.log(`[Uaznao] ${newChannels.length} canali italiani.`);
+    }
+
+    // --- Extra (canali locali) ---
+    const extraPath = '/config/liste/extra.json';
+    if (fs.existsSync(extraPath)) {
+        console.log('[Extra] Caricamento canali locali...');
+        try {
+            const extraRaw = fs.readFileSync(extraPath, 'utf-8');
+            const extraArray = JSON.parse(extraRaw);
+            if (Array.isArray(extraArray)) {
+                for (const item of extraArray) {
+                    const name = (item.channelName || '').trim();
+                    if (!name || !isItalianChannel(name) || allTitles.has(name.toLowerCase())) continue;
+
+                    // Stessi controlli di esclusione di Uaznao
+                    if (name.toLowerCase().includes('[uk]') || name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
+                    const excludeCategories = ['portogallo', 'uk', 'tnt sports'];
+                    if (item.category && excludeCategories.includes(item.category.toLowerCase())) continue;
+
+                    const category = getCategory(name);
+                    const clearkeys = extractClearkeyUaznao(item.url);   // stesso formato
+                    const cleanUrl = (item.url || '').replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
+                    const streamUrl = buildStreamUrl(cleanUrl, clearkeys);
+
+                    const epgInfo = findEpgInfo(name);
+                    const tvgId = epgInfo.tvgId || '';
+                    let logo = '';
+
+                    if (name.toLowerCase().startsWith('lba')) {
+                        logo = LBA_LOGO;
+                    } else if (name.toLowerCase().startsWith('sky ')) {
+                        if (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) {
+                            logo = epgInfo.logo;
+                        } else {
+                            logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
+                        }
+                    } else {
+                        logo = epgInfo.logo || '';
+                    }
+
+                    const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
+
+                    newChannels.push({
+                        id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
+                        type: 'tv', name, url: streamUrl, genre: category, logo: logoUrl, tvgId
+                    });
+                    newGenres.add(category);
+                    allTitles.add(name.toLowerCase());
+                }
+                console.log(`[Extra] ${newChannels.length} canali dopo merge.`);
+            }
+        } catch (e) {
+            console.error(`[Extra] Errore parsing: ${e.message}`);
+        }
     }
 
     // --- Zappr ---
@@ -424,49 +431,6 @@ async function buildChannels() {
             console.log(`[Zappr] ${newChannels.length} canali italiani aggiunti.`);
         } catch (e) { console.error(`[Zappr] Errore: ${e.message}`); }
     }
-
-    // --- Sport2 (API CDN Live TV, piano free) ---
-    console.log('[Sport2] Download canali italiani...');
-    try {
-        const { data } = await axios.get(SPORT2_API_URL, { timeout: 30000 });
-        if (data && Array.isArray(data.channels)) {
-            const italianChannels = data.channels.filter(ch => ch.code === 'it' && ch.status === 'online');
-            console.log(`[Sport2] Trovati ${italianChannels.length} canali italiani online.`);
-
-            const sport2Added = new Set();   // per evitare duplicati nella stessa sezione
-
-            for (const ch of italianChannels) {
-                const apiName = (ch.name || '').trim().toLowerCase();
-                const displayName = SPORT2_NAME_MAP[apiName];
-                if (!displayName) continue;   // non è nella lista desiderata
-
-                // Evita duplicati all'interno di Sport2
-                if (sport2Added.has(displayName)) continue;
-                sport2Added.add(displayName);
-
-                // Costruisci URL per EasyProxy con endpoint HLS
-                const streamUrl = buildStreamUrl(ch.url, [], false, '/proxy/hls/manifest.m3u8');
-                const category = 'Sport2';
-                const epgInfo = findEpgInfo(displayName);
-                const tvgId = epgInfo.tvgId || '';
-
-                // Logo: priorità EPG, poi API, infine placeholder Sky
-                let logo = epgInfo.logo || ch.image || '';
-                if (!logo && displayName.toLowerCase().startsWith('sky ')) {
-                    logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
-                }
-                const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(displayName)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(displayName)}`;
-
-                newChannels.push({
-                    id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
-                    type: 'tv', name: displayName, url: streamUrl, genre: category, logo: logoUrl, tvgId
-                });
-                newGenres.add(category);
-                // Nota: non aggiungiamo a allTitles, quindi i canali Sport2 possono coesistere con Uaznao/Zappr
-            }
-            console.log(`[Sport2] ${sport2Added.size} canali aggiunti.`);
-        }
-    } catch (e) { console.error(`[Sport2] Errore: ${e.message}`); }
 
     channels = newChannels;
     genres = newGenres;
