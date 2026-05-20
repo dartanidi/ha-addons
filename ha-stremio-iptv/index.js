@@ -512,7 +512,7 @@ async function run() {
     scheduleEPG();
 
     const manifest = {
-        id: 'org.iptv.arta', version: '2.0.0', name: 'Arta LiveTV', description: 'Streaming Live TV con DRM',
+        id: 'org.iptv.arta', version: '2.3.0', name: 'Arta LiveTV', description: 'Streaming Live TV con DRM',
         resources: ['catalog', 'meta', 'stream'], types: ['tv'],
         catalogs: [{
             type: 'tv', id: 'iptv_live', name: 'Canali TV',
