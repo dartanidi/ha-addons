@@ -40,7 +40,7 @@ WORKDIR /app
 
 # 3. Download codice sorgente (Scarica sempre l'ultima versione)
 ADD "https://api.github.com/repos/realbestia1/EasyProxy/commits/main" /tmp/skipcache
-RUN git clone https://github.com/realbestia1/EasyProxy.git .
+RUN git clone https://github.com/realbestia1/EasyProxy.git . && git checkout 2.6.13 || echo "Tag non trovato, ripristino in corso..." && git reset --hard 276ed7a
 
 # 4. Dipendenze Python
 RUN pip install --no-cache-dir -r requirements.txt
