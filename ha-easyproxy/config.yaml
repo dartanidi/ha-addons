@@ -1,5 +1,5 @@
 name: "EasyProxy Light"
-version: "2.3.1"
+version: "2.3.2"
 slug: "easyproxy"
 description: "Server Proxy Universale HLS (Versione Light). Ottimizzato 64-bit."
 arch:
