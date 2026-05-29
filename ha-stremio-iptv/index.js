@@ -451,7 +451,7 @@ async function run() {
     scheduleEPG();
 
     const manifest = {
-        id: 'org.iptv.arta', version: '2.4.2', name: 'Arta LiveTV', description: 'Streaming Live TV con DRM',
+        id: 'org.iptv.arta', version: '2.4.3', name: 'Arta LiveTV', description: 'Streaming Live TV con DRM',
         resources: ['catalog', 'meta', 'stream'], types: ['tv'],
         catalogs: [{
             type: 'tv', id: 'iptv_live', name: 'Canali TV',
@@ -511,8 +511,9 @@ async function run() {
     });
     function makePlaceholderSVG(text) {
         const safe = (text || 'Canale').replace(/&/g, '&amp;').replace(/</g, '&lt;');
-        return Buffer.from(`<svg width="320" height="180" xmlns="http://www.w3.org/2000/svg"><rect fill="#ffffff" width="320" height="180"/><text fill="#000000" font-family="Arial" font-size="20" x="160" y="90" text-anchor="middle" dominant-baseline="middle">${safe}</text></svg>`);
+    return Buffer.from(`<svg width="320" height="180" xmlns="http://www.w3.org/2000/svg"><rect fill="#000000" width="320" height="180"/><text fill="#ffffff" font-family="Arial" font-size="20" x="160" y="90" text-anchor="middle" dominant-baseline="middle">${safe}</text></svg>`);
     }
+    
     app.use((req, res, next) => { res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Access-Control-Allow-Headers', '*'); res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS'); if (req.method === 'OPTIONS') return res.sendStatus(200); next(); });
     app.get('/manifest.json', (req, res) => { const m = builder.getInterface().manifest; m.catalogs[0].extra[0].options = Array.from(genres).sort(); res.json(m); });
     iface = builder.getInterface();
