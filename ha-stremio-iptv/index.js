@@ -6,12 +6,11 @@ const crypto = require('crypto');
 const zlib = require('zlib');
 const sharp = require('sharp');
 const os = require('os');
-const fs = require('fs');   // <-- nuovo import
+const fs = require('fs');
 
 // ---------- Configurazione ----------
 const PORT = process.env.PORT || 3000;
 const UAZNAO_URL = process.env.UAZNAO_URL;
-const ZAPPR_URL = process.env.ZAPPR_URL || 'https://channels.zappr.stream/it/dtt/national.json';
 const EPG_URL = process.env.EPG_URL;
 const REFRESH_INTERVAL_MIN = parseInt(process.env.REFRESH_INTERVAL_MIN) || 60;
 const EASYPROXY_URL = process.env.EASYPROXY_URL?.replace(/\/$/, '');
@@ -161,10 +160,12 @@ async function updateEPG() {
     }
 }
 
-// ---------- Ricerca EPG ----------
+// ---------- Ricerca EPG (con pulizia suffissi) ----------
 function findEpgInfo(channelName) {
     if (!epgMap || Object.keys(epgMap).length === 0 || !channelName) return {};
-    const originalLower = channelName.toLowerCase().trim();
+
+    const cleanName = channelName.replace(/\s*\([^)]*\)\s*$/, '').trim();
+    const originalLower = cleanName.toLowerCase().trim();
     const searchFor = NAME_ALIASES[originalLower] || originalLower;
 
     for (const entry of Object.values(epgMap)) {
@@ -191,18 +192,6 @@ function extractClearkeyUaznao(url) {
         const parts = decoded.split(':');
         return parts.length >= 2 ? [`${parts[0]}:${parts[1]}`] : [];
     } catch { return []; }
-}
-
-function extractClearkeyZappr(details) {
-    if (!details) return null;
-    if (typeof details === 'string') return [details];
-    if (typeof details === 'object') {
-        const keys = Object.keys(details);
-        if (keys.length !== 1) return null;
-        const firstKey = keys[0];
-        return [`${firstKey}:${details[firstKey]}`];
-    }
-    return null;
 }
 
 // ---------- Costruzione URL EasyProxy ----------
@@ -287,8 +276,9 @@ async function buildChannels() {
 
             const epgInfo = findEpgInfo(name);
             const tvgId = epgInfo.tvgId || '';
+            
+            // LOGO: forzato a stringa vuota se non trovato
             let logo = '';
-
             if (name.toLowerCase().startsWith('lba')) {
                 logo = LBA_LOGO;
             } else if (name.toLowerCase().startsWith('sky ')) {
@@ -298,7 +288,7 @@ async function buildChannels() {
                     logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
                 }
             } else {
-                logo = epgInfo.logo || '';
+                logo = epgInfo.logo || '';   // se undefined, rimane ''
             }
 
             const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
@@ -325,20 +315,19 @@ async function buildChannels() {
                     const name = (item.channelName || '').trim();
                     if (!name || !isItalianChannel(name) || allTitles.has(name.toLowerCase())) continue;
 
-                    // Stessi controlli di esclusione di Uaznao
                     if (name.toLowerCase().includes('[uk]') || name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
                     const excludeCategories = ['portogallo', 'uk', 'tnt sports'];
                     if (item.category && excludeCategories.includes(item.category.toLowerCase())) continue;
 
                     const category = getCategory(name);
-                    const clearkeys = extractClearkeyUaznao(item.url);   // stesso formato
+                    const clearkeys = extractClearkeyUaznao(item.url);
                     const cleanUrl = (item.url || '').replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
                     const streamUrl = buildStreamUrl(cleanUrl, clearkeys);
 
                     const epgInfo = findEpgInfo(name);
                     const tvgId = epgInfo.tvgId || '';
+                    
                     let logo = '';
-
                     if (name.toLowerCase().startsWith('lba')) {
                         logo = LBA_LOGO;
                     } else if (name.toLowerCase().startsWith('sky ')) {
@@ -367,86 +356,18 @@ async function buildChannels() {
         }
     }
 
-    // --- Zappr ---
-    if (ZAPPR_URL) {
-        console.log('[Zappr] Download...');
-        try {
-            const { data } = await axios.get(ZAPPR_URL, { timeout: 30000 });
-            const zapprChannels = Array.isArray(data) ? data : (data?.channels || []);
-            for (const ch of zapprChannels) {
-                const name = (ch.name || '').trim();
-                if (!name || !isItalianChannel(name) || allTitles.has(name.toLowerCase())) continue;
-
-                if (name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
-
-                const unsupportedTypes = ['iframe', 'youtube', 'twitch', 'popup'];
-                if (!ch.type || unsupportedTypes.includes(ch.type)) continue;
-
-                let urlToUse = ch.url;
-                let licensedetails = ch.licensedetails;
-                if (ch.geoblock && ch.geoblock.url && ch.geoblock.url !== true) {
-                    urlToUse = ch.geoblock.url;
-                    if (ch.geoblock.licensedetails) licensedetails = ch.geoblock.licensedetails;
-                }
-                if (!urlToUse || urlToUse.startsWith('zappr://')) continue;
-
-                let clearkeys = null;
-                if (ch.license === 'clearkey' || (ch.geoblock && ch.geoblock.license === 'clearkey')) {
-                    clearkeys = extractClearkeyZappr(licensedetails);
-                    if (!clearkeys) continue;
-                }
-
-                const disableSsl = urlToUse.includes('uvotv.zappr.stream') || urlToUse.includes('netplus.zappr.stream');
-                const streamUrl = buildStreamUrl(urlToUse, clearkeys || [], disableSsl);
-
-                const category = getCategory(name);
-                const epgInfo = findEpgInfo(name);
-                const tvgId = epgInfo.tvgId || '';
-                let logo = '';
-
-                if (name.toLowerCase().startsWith('lba')) {
-                    logo = LBA_LOGO;
-                } else if (name.toLowerCase().startsWith('sky ')) {
-                    if (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) {
-                        logo = epgInfo.logo;
-                    } else {
-                        logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
-                    }
-                } else {
-                    logo = epgInfo.logo || '';
-                }
-                if (!logo && ch.logo) {
-                    logo = `https://channels.zappr.stream/logos/it/optimized/${ch.logo}`;
-                }
-
-                const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
-
-                newChannels.push({
-                    id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
-                    type: 'tv', name, url: streamUrl, genre: category, logo: logoUrl, tvgId
-                });
-                newGenres.add(category);
-                allTitles.add(name.toLowerCase());
-            }
-            console.log(`[Zappr] ${newChannels.length} canali italiani aggiunti.`);
-        } catch (e) { console.error(`[Zappr] Errore: ${e.message}`); }
-    }
-
     channels = newChannels;
     genres = newGenres;
     console.log(`[Totale] ${channels.length} canali.`);
 }
 
-// ---------- Scheduling intelligente ----------
-function getSkyCinemaExpiry(uaznaoData) {
+// ---------- Scheduling basato su Sky Sport 24 ----------
+function getSkySport24Expiry(uaznaoData) {
     if (!uaznaoData || !Array.isArray(uaznaoData)) return null;
-    const possibleNames = ['Sky Cinema Uno', 'Sky Cinema 1'];
-    for (const targetName of possibleNames) {
-        const skyCinema = uaznaoData.find(item => item.channelName && item.channelName.toLowerCase().trim() === targetName.toLowerCase());
-        if (skyCinema && skyCinema.expiresAt) {
-            const d = new Date(skyCinema.expiresAt);
-            if (!isNaN(d.getTime())) return d;
-        }
+    const skySport24 = uaznaoData.find(item => item.channelName && item.channelName.toLowerCase().trim() === 'sky sport 24');
+    if (skySport24 && skySport24.expiresAt) {
+        const d = new Date(skySport24.expiresAt);
+        if (!isNaN(d.getTime())) return d;
     }
     return null;
 }
@@ -454,19 +375,19 @@ function getSkyCinemaExpiry(uaznaoData) {
 function scheduleNextRefresh(uaznaoData) {
     if (refreshTimer) clearTimeout(refreshTimer);
 
-    const skyExpiry = getSkyCinemaExpiry(uaznaoData);
+    const skyExpiry = getSkySport24Expiry(uaznaoData);
     let delayMs;
 
     if (skyExpiry) {
         const now = Date.now();
         if (lastSkyExpiry && skyExpiry.getTime() === lastSkyExpiry.getTime()) {
             delayMs = 30 * 60 * 1000;
-            console.log(`[Scheduler] Scadenza Sky Cinema Uno invariata (${skyExpiry.toISOString()}), riprovo tra 30 min.`);
+            console.log(`[Scheduler] Scadenza Sky Sport 24 invariata (${skyExpiry.toISOString()}), riprovo tra 30 min.`);
         } else {
             const targetMs = skyExpiry.getTime() + 60 * 60 * 1000;
             delayMs = targetMs - now;
             if (delayMs < 300000) delayMs = 300000;
-            console.log(`[Scheduler] Nuova scadenza Sky Cinema Uno: ${skyExpiry.toISOString()}, refresh tra ${Math.round(delayMs / 60000)} min.`);
+            console.log(`[Scheduler] Nuova scadenza Sky Sport 24: ${skyExpiry.toISOString()}, refresh tra ${Math.round(delayMs / 60000)} min.`);
         }
         lastSkyExpiry = skyExpiry;
     } else {
@@ -512,7 +433,7 @@ async function run() {
     scheduleEPG();
 
     const manifest = {
-        id: 'org.iptv.arta', version: '2.3.0', name: 'Arta LiveTV', description: 'Streaming Live TV con DRM',
+        id: 'org.iptv.arta', version: '2.0.0', name: 'Arta LiveTV', description: 'Streaming Live TV con DRM',
         resources: ['catalog', 'meta', 'stream'], types: ['tv'],
         catalogs: [{
             type: 'tv', id: 'iptv_live', name: 'Canali TV',
