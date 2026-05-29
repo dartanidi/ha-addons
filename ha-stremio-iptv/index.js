@@ -76,6 +76,9 @@ const NAME_ALIASES = {
 // ---------- Logo LBA ----------
 const LBA_LOGO = 'https://cdn-ukwest.onetrust.com/logos/f5e93496-e77f-4ca2-8146-3faeb1ca757e/0198c261-d9ca-7f63-82f1-d90a5fb77e79/f8007094-53bc-462e-a2bd-d92114873064/App_Store_1280_1x.png';
 
+// ---------- Logo Eurosport ----------
+const EUROSPORT_LOGO = 'https://d204lf4nuskf6u.cloudfront.net/italy-images/8343236da6c44edffaa0eadab4db5191.png';
+
 // ---------- Utility ----------
 function cleanNameForComparison(name) {
     if (!name) return "";
@@ -276,11 +279,15 @@ async function buildChannels() {
 
             const epgInfo = findEpgInfo(name);
             const tvgId = epgInfo.tvgId || '';
-            
-            // LOGO: forzato a stringa vuota se non trovato
+
+            // Inizializza logo come vuoto
             let logo = '';
+
+            // Loghi speciali per categorie
             if (name.toLowerCase().startsWith('lba')) {
                 logo = LBA_LOGO;
+            } else if (name.toLowerCase().startsWith('eurosport')) {
+                logo = EUROSPORT_LOGO;  // Forza il logo Eurosport fisso
             } else if (name.toLowerCase().startsWith('sky ')) {
                 if (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) {
                     logo = epgInfo.logo;
@@ -288,9 +295,10 @@ async function buildChannels() {
                     logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
                 }
             } else {
-                logo = epgInfo.logo || '';   // se undefined, rimane ''
+                logo = epgInfo.logo || '';  // Se undefined, rimane ''
             }
 
+            // Se logo è ancora vuoto, usa il placeholder generico (logoUrl sarà generato con nome)
             const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
 
             newChannels.push({
@@ -326,10 +334,12 @@ async function buildChannels() {
 
                     const epgInfo = findEpgInfo(name);
                     const tvgId = epgInfo.tvgId || '';
-                    
+
                     let logo = '';
                     if (name.toLowerCase().startsWith('lba')) {
                         logo = LBA_LOGO;
+                    } else if (name.toLowerCase().startsWith('eurosport')) {
+                        logo = EUROSPORT_LOGO;
                     } else if (name.toLowerCase().startsWith('sky ')) {
                         if (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) {
                             logo = epgInfo.logo;
@@ -433,7 +443,7 @@ async function run() {
     scheduleEPG();
 
     const manifest = {
-        id: 'org.iptv.arta', version: '2.0.0', name: 'Arta LiveTV', description: 'Streaming Live TV con DRM',
+        id: 'org.iptv.arta', version: '2.4.1', name: 'Arta LiveTV', description: 'Streaming Live TV con DRM',
         resources: ['catalog', 'meta', 'stream'], types: ['tv'],
         catalogs: [{
             type: 'tv', id: 'iptv_live', name: 'Canali TV',
