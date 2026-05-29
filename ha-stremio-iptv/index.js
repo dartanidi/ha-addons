@@ -77,7 +77,7 @@ const NAME_ALIASES = {
 const LBA_LOGO = 'https://cdn-ukwest.onetrust.com/logos/f5e93496-e77f-4ca2-8146-3faeb1ca757e/0198c261-d9ca-7f63-82f1-d90a5fb77e79/f8007094-53bc-462e-a2bd-d92114873064/App_Store_1280_1x.png';
 
 // ---------- Logo Eurosport fisso ----------
-const EUROSPORT_LOGO = 'https://d204lf4nuskf6u.cloudfront.net/italy-images/8343236da6c44edffaa0eadab4db5191.png';
+const EUROSPORT_LOGO = 'https://www.ci-portal.de/wp-content/uploads/eurosport.png';
 
 // ---------- Utility ----------
 function cleanNameForComparison(name) {
