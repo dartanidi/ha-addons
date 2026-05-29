@@ -76,7 +76,7 @@ const NAME_ALIASES = {
 // ---------- Logo LBA ----------
 const LBA_LOGO = 'https://cdn-ukwest.onetrust.com/logos/f5e93496-e77f-4ca2-8146-3faeb1ca757e/0198c261-d9ca-7f63-82f1-d90a5fb77e79/f8007094-53bc-462e-a2bd-d92114873064/App_Store_1280_1x.png';
 
-// ---------- Logo Eurosport ----------
+// ---------- Logo Eurosport fisso ----------
 const EUROSPORT_LOGO = 'https://d204lf4nuskf6u.cloudfront.net/italy-images/8343236da6c44edffaa0eadab4db5191.png';
 
 // ---------- Utility ----------
@@ -163,7 +163,7 @@ async function updateEPG() {
     }
 }
 
-// ---------- Ricerca EPG (con pulizia suffissi) ----------
+// ---------- Ricerca EPG (con protezione contenimento) ----------
 function findEpgInfo(channelName) {
     if (!epgMap || Object.keys(epgMap).length === 0 || !channelName) return {};
 
@@ -171,17 +171,23 @@ function findEpgInfo(channelName) {
     const originalLower = cleanName.toLowerCase().trim();
     const searchFor = NAME_ALIASES[originalLower] || originalLower;
 
+    // 1. Match esatto
     for (const entry of Object.values(epgMap)) {
         if (entry.originalName.toLowerCase() === searchFor) return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
     }
+
     const searchClean = cleanNameForComparison(searchFor);
+    // 2. Match pulito
     for (const entry of Object.values(epgMap)) {
         if (cleanNameForComparison(entry.originalName) === searchClean) return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
     }
+
+    // 3. Contenimento UNIDIREZIONALE: solo se il nome EPG contiene il nome cercato
     for (const entry of Object.values(epgMap)) {
         const epgClean = cleanNameForComparison(entry.originalName);
-        if (epgClean.includes(searchClean) || searchClean.includes(epgClean)) return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
+        if (epgClean.includes(searchClean)) return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
     }
+
     return {};
 }
 
@@ -279,15 +285,13 @@ async function buildChannels() {
 
             const epgInfo = findEpgInfo(name);
             const tvgId = epgInfo.tvgId || '';
-
-            // Inizializza logo come vuoto
             let logo = '';
 
-            // Loghi speciali per categorie
+            // Logo specifici
             if (name.toLowerCase().startsWith('lba')) {
                 logo = LBA_LOGO;
             } else if (name.toLowerCase().startsWith('eurosport')) {
-                logo = EUROSPORT_LOGO;  // Forza il logo Eurosport fisso
+                logo = EUROSPORT_LOGO;                  // logo fisso per tutti gli Eurosport
             } else if (name.toLowerCase().startsWith('sky ')) {
                 if (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) {
                     logo = epgInfo.logo;
@@ -295,11 +299,13 @@ async function buildChannels() {
                     logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
                 }
             } else {
-                logo = epgInfo.logo || '';  // Se undefined, rimane ''
+                logo = epgInfo.logo || '';
             }
 
-            // Se logo è ancora vuoto, usa il placeholder generico (logoUrl sarà generato con nome)
-            const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
+            // Placeholder locale gestito dall'endpoint /logo
+            const logoUrl = logo
+                ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}`
+                : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
 
             newChannels.push({
                 id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
@@ -334,8 +340,8 @@ async function buildChannels() {
 
                     const epgInfo = findEpgInfo(name);
                     const tvgId = epgInfo.tvgId || '';
-
                     let logo = '';
+
                     if (name.toLowerCase().startsWith('lba')) {
                         logo = LBA_LOGO;
                     } else if (name.toLowerCase().startsWith('eurosport')) {
@@ -350,7 +356,9 @@ async function buildChannels() {
                         logo = epgInfo.logo || '';
                     }
 
-                    const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
+                    const logoUrl = logo
+                        ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}`
+                        : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
 
                     newChannels.push({
                         id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
@@ -443,7 +451,7 @@ async function run() {
     scheduleEPG();
 
     const manifest = {
-        id: 'org.iptv.arta', version: '2.4.1', name: 'Arta LiveTV', description: 'Streaming Live TV con DRM',
+        id: 'org.iptv.arta', version: '2.4.2', name: 'Arta LiveTV', description: 'Streaming Live TV con DRM',
         resources: ['catalog', 'meta', 'stream'], types: ['tv'],
         catalogs: [{
             type: 'tv', id: 'iptv_live', name: 'Canali TV',
@@ -503,7 +511,7 @@ async function run() {
     });
     function makePlaceholderSVG(text) {
         const safe = (text || 'Canale').replace(/&/g, '&amp;').replace(/</g, '&lt;');
-        return Buffer.from(`<svg width="320" height="180" xmlns="http://www.w3.org/2000/svg"><rect fill="#1a1a1a" width="320" height="180"/><text fill="#ffffff" font-family="Arial" font-size="20" x="160" y="90" text-anchor="middle" dominant-baseline="middle">${safe}</text></svg>`);
+        return Buffer.from(`<svg width="320" height="180" xmlns="http://www.w3.org/2000/svg"><rect fill="#ffffff" width="320" height="180"/><text fill="#000000" font-family="Arial" font-size="20" x="160" y="90" text-anchor="middle" dominant-baseline="middle">${safe}</text></svg>`);
     }
     app.use((req, res, next) => { res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Access-Control-Allow-Headers', '*'); res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS'); if (req.method === 'OPTIONS') return res.sendStatus(200); next(); });
     app.get('/manifest.json', (req, res) => { const m = builder.getInterface().manifest; m.catalogs[0].extra[0].options = Array.from(genres).sort(); res.json(m); });
