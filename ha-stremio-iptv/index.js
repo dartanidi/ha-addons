@@ -215,6 +215,29 @@ function buildStreamUrl(streamUrl, clearkeys, disableSsl = false) {
     return `${EASYPROXY_URL}/proxy/manifest.m3u8?${params.toString()}`;
 }
 
+// ---------- Risoluzione URL dami-tv.pro ----------
+async function resolveDamiTvUrl(embedUrl) {
+    try {
+        const idMatch = embedUrl.match(/\/embed\/channel\/\?id=([^&]+)/);
+        if (!idMatch) return null;
+        const channelId = idMatch[1];
+        const resolveUrl = `https://dami-tv.pro/papi/tv/resolve/${channelId}`;
+        console.log(`[DamiTV] Risoluzione: ${resolveUrl}`);
+        const resp = await axios.get(resolveUrl, { timeout: 10000 });
+        const data = resp.data;
+        const streamUrl = data.stream || data.url;
+        if (streamUrl) {
+            console.log(`[DamiTV] Flusso trovato: ${streamUrl}`);
+            return streamUrl;
+        }
+        console.warn('[DamiTV] Nessun URL nel JSON:', data);
+        return null;
+    } catch (e) {
+        console.error(`[DamiTV] Errore risoluzione: ${e.message}`);
+        return null;
+    }
+}
+
 // ---------- Fallback URL Uaznao ----------
 async function fetchNewUaznaoUrl() {
     console.log('[Fallback] Tentativo di recuperare nuovo URL Uaznao...');
@@ -279,19 +302,30 @@ async function buildChannels() {
             if (item.category && excludeCategories.includes(item.category.toLowerCase())) continue;
 
             const category = getCategory(name);
+            let cleanUrl = (item.url || '').replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
+
+            // --- Risoluzione DamiTV ---
+            if (cleanUrl.includes('dami-tv.pro')) {
+                const resolved = await resolveDamiTvUrl(cleanUrl);
+                if (resolved) {
+                    cleanUrl = resolved;   // sostituisce con l'URL diretto
+                } else {
+                    console.warn(`[Uaznao] Impossibile risolvere DamiTV per ${name}, salto il canale.`);
+                    continue;
+                }
+            }
+
             const clearkeys = extractClearkeyUaznao(item.url);
-            const cleanUrl = (item.url || '').replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
             const streamUrl = buildStreamUrl(cleanUrl, clearkeys);
 
             const epgInfo = findEpgInfo(name);
             const tvgId = epgInfo.tvgId || '';
             let logo = '';
 
-            // Logo specifici
             if (name.toLowerCase().startsWith('lba')) {
                 logo = LBA_LOGO;
             } else if (name.toLowerCase().startsWith('eurosport')) {
-                logo = EUROSPORT_LOGO;                  // logo fisso per tutti gli Eurosport
+                logo = EUROSPORT_LOGO;
             } else if (name.toLowerCase().startsWith('sky ')) {
                 if (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) {
                     logo = epgInfo.logo;
@@ -302,7 +336,6 @@ async function buildChannels() {
                 logo = epgInfo.logo || '';
             }
 
-            // Placeholder locale gestito dall'endpoint /logo
             const logoUrl = logo
                 ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}`
                 : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
@@ -334,8 +367,19 @@ async function buildChannels() {
                     if (item.category && excludeCategories.includes(item.category.toLowerCase())) continue;
 
                     const category = getCategory(name);
+                    let cleanUrl = (item.url || '').replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
+
+                    if (cleanUrl.includes('dami-tv.pro')) {
+                        const resolved = await resolveDamiTvUrl(cleanUrl);
+                        if (resolved) {
+                            cleanUrl = resolved;
+                        } else {
+                            console.warn(`[Extra] Impossibile risolvere DamiTV per ${name}, salto il canale.`);
+                            continue;
+                        }
+                    }
+
                     const clearkeys = extractClearkeyUaznao(item.url);
-                    const cleanUrl = (item.url || '').replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
                     const streamUrl = buildStreamUrl(cleanUrl, clearkeys);
 
                     const epgInfo = findEpgInfo(name);
@@ -451,7 +495,7 @@ async function run() {
     scheduleEPG();
 
     const manifest = {
-        id: 'org.iptv.arta', version: '2.4.3', name: 'Arta LiveTV', description: 'Streaming Live TV con DRM',
+        id: 'org.iptv.arta', version: '2.0.0', name: 'Arta LiveTV', description: 'Streaming Live TV con DRM',
         resources: ['catalog', 'meta', 'stream'], types: ['tv'],
         catalogs: [{
             type: 'tv', id: 'iptv_live', name: 'Canali TV',
@@ -511,9 +555,8 @@ async function run() {
     });
     function makePlaceholderSVG(text) {
         const safe = (text || 'Canale').replace(/&/g, '&amp;').replace(/</g, '&lt;');
-    return Buffer.from(`<svg width="320" height="180" xmlns="http://www.w3.org/2000/svg"><rect fill="#000000" width="320" height="180"/><text fill="#ffffff" font-family="Arial" font-size="20" x="160" y="90" text-anchor="middle" dominant-baseline="middle">${safe}</text></svg>`);
+        return Buffer.from(`<svg width="320" height="180" xmlns="http://www.w3.org/2000/svg"><rect fill="#000000" width="320" height="180"/><text fill="#ffffff" font-family="Arial" font-size="20" x="160" y="90" text-anchor="middle" dominant-baseline="middle">${safe}</text></svg>`);
     }
-    
     app.use((req, res, next) => { res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Access-Control-Allow-Headers', '*'); res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS'); if (req.method === 'OPTIONS') return res.sendStatus(200); next(); });
     app.get('/manifest.json', (req, res) => { const m = builder.getInterface().manifest; m.catalogs[0].extra[0].options = Array.from(genres).sort(); res.json(m); });
     iface = builder.getInterface();
