@@ -215,7 +215,7 @@ function buildStreamUrl(streamUrl, clearkeys, disableSsl = false) {
     return `${EASYPROXY_URL}/proxy/manifest.m3u8?${params.toString()}`;
 }
 
-// ---------- Risoluzione URL dami-tv.pro ----------
+// ---------- Risoluzione URL dami-tv.pro (MODIFICATA) ----------
 async function resolveDamiTvUrl(embedUrl) {
     try {
         const idMatch = embedUrl.match(/\/embed\/channel\/\?id=([^&]+)/);
@@ -225,9 +225,13 @@ async function resolveDamiTvUrl(embedUrl) {
         console.log(`[DamiTV] Risoluzione: ${resolveUrl}`);
         const resp = await axios.get(resolveUrl, { timeout: 10000 });
         const data = resp.data;
-        const streamUrl = data.stream || data.url;
+        let streamUrl = data.stream || data.url;
         if (streamUrl) {
-            console.log(`[DamiTV] Flusso trovato: ${streamUrl}`);
+            // Se è un percorso relativo, lo rende assoluto
+            if (streamUrl.startsWith('/')) {
+                streamUrl = `https://dami-tv.pro${streamUrl}`;
+            }
+            console.log(`[DamiTV] Flusso assoluto: ${streamUrl}`);
             return streamUrl;
         }
         console.warn('[DamiTV] Nessun URL nel JSON:', data);
@@ -304,11 +308,11 @@ async function buildChannels() {
             const category = getCategory(name);
             let cleanUrl = (item.url || '').replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
 
-            // --- Risoluzione DamiTV ---
+            // --- Risoluzione DamiTV (MODIFICATA) ---
             if (cleanUrl.includes('dami-tv.pro')) {
                 const resolved = await resolveDamiTvUrl(cleanUrl);
                 if (resolved) {
-                    cleanUrl = resolved;   // sostituisce con l'URL diretto
+                    cleanUrl = resolved;   // ora è un URL assoluto
                 } else {
                     console.warn(`[Uaznao] Impossibile risolvere DamiTV per ${name}, salto il canale.`);
                     continue;
@@ -495,7 +499,7 @@ async function run() {
     scheduleEPG();
 
     const manifest = {
-        id: 'org.iptv.arta', version: '2.5.0', name: 'Arta LiveTV', description: 'Streaming Live TV con DRM',
+        id: 'org.iptv.arta', version: '2.5.1', name: 'Arta LiveTV', description: 'Streaming Live TV con DRM',
         resources: ['catalog', 'meta', 'stream'], types: ['tv'],
         catalogs: [{
             type: 'tv', id: 'iptv_live', name: 'Canali TV',
