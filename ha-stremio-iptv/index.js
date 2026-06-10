@@ -215,7 +215,7 @@ function buildStreamUrl(streamUrl, clearkeys, disableSsl = false) {
     return `${EASYPROXY_URL}/proxy/manifest.m3u8?${params.toString()}`;
 }
 
-// ---------- Risoluzione URL dami-tv.pro (MODIFICATA) ----------
+// ---------- Risoluzione URL dami-tv.pro ----------
 async function resolveDamiTvUrl(embedUrl) {
     try {
         const idMatch = embedUrl.match(/\/embed\/channel\/\?id=([^&]+)/);
@@ -223,11 +223,18 @@ async function resolveDamiTvUrl(embedUrl) {
         const channelId = idMatch[1];
         const resolveUrl = `https://dami-tv.pro/papi/tv/resolve/${channelId}`;
         console.log(`[DamiTV] Risoluzione: ${resolveUrl}`);
-        const resp = await axios.get(resolveUrl, { timeout: 10000 });
+        
+        const resp = await axios.get(resolveUrl, {
+            timeout: 10000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://dami-tv.pro/'
+            }
+        });
+        
         const data = resp.data;
         let streamUrl = data.stream || data.url;
         if (streamUrl) {
-            // Se è un percorso relativo, lo rende assoluto
             if (streamUrl.startsWith('/')) {
                 streamUrl = `https://dami-tv.pro${streamUrl}`;
             }
@@ -308,11 +315,11 @@ async function buildChannels() {
             const category = getCategory(name);
             let cleanUrl = (item.url || '').replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
 
-            // --- Risoluzione DamiTV (MODIFICATA) ---
+            // --- Risoluzione DamiTV ---
             if (cleanUrl.includes('dami-tv.pro')) {
                 const resolved = await resolveDamiTvUrl(cleanUrl);
                 if (resolved) {
-                    cleanUrl = resolved;   // ora è un URL assoluto
+                    cleanUrl = resolved;
                 } else {
                     console.warn(`[Uaznao] Impossibile risolvere DamiTV per ${name}, salto il canale.`);
                     continue;
@@ -499,8 +506,12 @@ async function run() {
     scheduleEPG();
 
     const manifest = {
-        id: 'org.iptv.arta', version: process.env.ADDON_VERSION || '2.0.0', name: 'Arta LiveTV', description: 'Streaming Live TV con DRM',
-        resources: ['catalog', 'meta', 'stream'], types: ['tv'],
+        id: 'org.iptv.arta',
+        version: process.env.ADDON_VERSION || '2.0.0',
+        name: 'Arta LiveTV',
+        description: 'Streaming Live TV con DRM',
+        resources: ['catalog', 'meta', 'stream'],
+        types: ['tv'],
         catalogs: [{
             type: 'tv', id: 'iptv_live', name: 'Canali TV',
             extra: [
@@ -508,7 +519,9 @@ async function run() {
                 { name: 'search', isRequired: false }, { name: 'skip', isRequired: false }
             ]
         }],
-        idPrefixes: ['iptv_'], behaviorHints: { configurable: false }, logo: "https://dl.strem.io/addon-logo.png"
+        idPrefixes: ['iptv_'],
+        behaviorHints: { configurable: false },
+        logo: "https://dl.strem.io/addon-logo.png"
     };
 
     builder = new addonBuilder(manifest);
