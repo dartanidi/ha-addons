@@ -240,51 +240,91 @@ async function resolveDamiTvUrl(channelId) {
     }
 }
 
+// ---------- Risoluzione URL DLHD (Sky/DAZN) ----------
+async function resolveDlhdUrl(channelId) {
+    try {
+        const url = `https://dami-tv.pro/papi/tv/dlhd/${channelId}/playlist.m3u8`;
+        console.log(`[DLHD] Risoluzione ID: ${channelId}...`);
+        const resp = await axios.get(url, {
+            maxRedirects: 0,
+            validateStatus: status => status >= 200 && status < 400,
+            headers: { 'Referer': 'https://dami-tv.pro/', 'User-Agent': 'Mozilla/5.0' }
+        });
+        
+        let finalUrl = resp.headers.location;
+        if (finalUrl) {
+             if (finalUrl.startsWith('/')) finalUrl = `https://dami-tv.pro${finalUrl}`;
+             return finalUrl;
+        }
+        return url;
+    } catch (e) {
+        if (e.response && e.response.headers && e.response.headers.location) {
+             let finalUrl = e.response.headers.location;
+             if (finalUrl.startsWith('/')) finalUrl = `https://dami-tv.pro${finalUrl}`;
+             return finalUrl;
+        }
+        return null;
+    }
+}
+
 // ---------- Fetch da DamiTV ----------
 async function buildChannels() {
     const newChannels = [], newGenres = new Set(), allTitles = new Set();
 
-    console.log('[DamiTV] Download lista canali TV...');
-    try {
-        const { data } = await axios.get('https://dami-tv.pro/data/tv-channels.json', { timeout: 30000 });
-        if (data && data.channels) {
-            for (const item of data.channels) {
-                if (item.country !== 'it' && item.country !== 'Italy') continue;
-                
-                const name = (item.name || '').trim();
-                if (!name) continue;
+    async function elaboraCanali(urlData, tipo) {
+        try {
+            console.log(`[${tipo}] Download lista canali TV...`);
+            const { data } = await axios.get(urlData, { timeout: 30000 });
+            if (data && data.channels) {
+                for (const item of data.channels) {
+                    if (item.country !== 'it' && item.country !== 'Italy') continue;
+                    
+                    let name = (item.name || '').trim();
+                    if (!name) continue;
+                    name = name.replace(/ Italy$/i, '').trim(); // Pulisce i nomi dal suffisso ' Italy'
 
-                if (filterKeywords.length > 0) {
-                    const nameLower = name.toLowerCase();
-                    if (!filterKeywords.some(kw => nameLower.includes(kw))) continue;
+                    if (filterKeywords.length > 0) {
+                        const nameLower = name.toLowerCase();
+                        if (!filterKeywords.some(kw => nameLower.includes(kw))) continue;
+                    }
+
+                    const category = getCategory(name);
+                    const epgInfo = findEpgInfo(name);
+                    const tvgId = epgInfo.tvgId || '';
+                    let logo = item.image || epgInfo.logo || '';
+
+                    if (name.toLowerCase().startsWith('lba')) logo = LBA_LOGO;
+                    else if (name.toLowerCase().startsWith('eurosport')) logo = EUROSPORT_LOGO;
+                    else if (name.toLowerCase().startsWith('sky ')) {
+                        logo = (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) 
+                            ? epgInfo.logo : 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
+                    } else if (name.toLowerCase().startsWith('dazn')) {
+                        logo = 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/DAZN_logo.svg/1024px-DAZN_logo.svg.png';
+                    }
+
+                    const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
+
+                    const channelObj = {
+                        id: `iptv_${item.id}_${crypto.createHash('md5').update(name).digest('hex').substring(0, 5)}`,
+                        type: 'tv', name, url: null, genre: category, logo: logoUrl, tvgId
+                    };
+
+                    if (tipo === 'DamiTV') channelObj.damiId = item.id;
+                    else channelObj.dlhdId = item.id;
+
+                    newChannels.push(channelObj);
+                    newGenres.add(category);
+                    allTitles.add(name.toLowerCase());
                 }
-
-                const category = getCategory(name);
-                const epgInfo = findEpgInfo(name);
-                const tvgId = epgInfo.tvgId || '';
-                let logo = item.image || epgInfo.logo || '';
-
-                if (name.toLowerCase().startsWith('lba')) logo = LBA_LOGO;
-                else if (name.toLowerCase().startsWith('eurosport')) logo = EUROSPORT_LOGO;
-                else if (name.toLowerCase().startsWith('sky ')) {
-                    logo = (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) 
-                        ? epgInfo.logo : 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
-                }
-
-                const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
-
-                newChannels.push({
-                    id: `iptv_${item.id}_${crypto.createHash('md5').update(name).digest('hex').substring(0, 5)}`,
-                    type: 'tv', name, damiId: item.id, url: null, genre: category, logo: logoUrl, tvgId
-                });
-                newGenres.add(category);
-                allTitles.add(name.toLowerCase());
+                console.log(`[${tipo}] Aggiunti canali italiani.`);
             }
-            console.log(`[DamiTV] Elaborati ${newChannels.length} canali italiani.`);
+        } catch (e) {
+            console.error(`[${tipo}] Errore download canali: ${e.message}`);
         }
-    } catch (e) {
-        console.error(`[DamiTV] Errore download canali: ${e.message}`);
     }
+
+    await elaboraCanali('https://dami-tv.pro/data/tv-channels.json', 'DamiTV');
+    await elaboraCanali('https://dami-tv.pro/data/dlhd-channels.json', 'DLHD');
 
     const extraPath = '/config/liste/extra.json';
     if (fs.existsSync(extraPath)) {
@@ -300,7 +340,7 @@ async function buildChannels() {
                     const streamUrl = buildStreamUrl(cleanUrl, clearkeys);
                     newChannels.push({
                         id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
-                        type: 'tv', name, damiId: null, url: streamUrl, genre: category, logo: `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`, tvgId: ''
+                        type: 'tv', name, damiId: null, dlhdId: null, url: streamUrl, genre: category, logo: `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`, tvgId: ''
                     });
                     newGenres.add(category);
                 }
@@ -400,9 +440,10 @@ async function run() {
         let streamUrl = ch.url;
         if (ch.damiId) {
             const resolved = await resolveDamiTvUrl(ch.damiId);
-            if (resolved) {
-                streamUrl = buildStreamUrl(resolved, []); 
-            }
+            if (resolved) streamUrl = buildStreamUrl(resolved, []); 
+        } else if (ch.dlhdId) {
+            const resolved = await resolveDlhdUrl(ch.dlhdId);
+            if (resolved) streamUrl = buildStreamUrl(resolved, []); 
         }
         
         if (!streamUrl) return { streams: [] };
