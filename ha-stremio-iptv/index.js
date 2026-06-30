@@ -74,8 +74,6 @@ const NAME_ALIASES = {
 
 // ---------- Logo LBA ----------
 const LBA_LOGO = 'https://cdn-ukwest.onetrust.com/logos/f5e93496-e77f-4ca2-8146-3faeb1ca757e/0198c261-d9ca-7f63-82f1-d90a5fb77e79/f8007094-53bc-462e-a2bd-d92114873064/App_Store_1280_1x.png';
-
-// ---------- Logo Eurosport fisso ----------
 const EUROSPORT_LOGO = 'https://www.ci-portal.de/wp-content/uploads/eurosport.png';
 
 // ---------- Utility ----------
@@ -162,7 +160,6 @@ async function updateEPG() {
     }
 }
 
-// ---------- Ricerca EPG (con protezione contenimento) ----------
 function findEpgInfo(channelName) {
     if (!epgMap || Object.keys(epgMap).length === 0 || !channelName) return {};
 
@@ -170,27 +167,20 @@ function findEpgInfo(channelName) {
     const originalLower = cleanName.toLowerCase().trim();
     const searchFor = NAME_ALIASES[originalLower] || originalLower;
 
-    // 1. Match esatto
     for (const entry of Object.values(epgMap)) {
         if (entry.originalName.toLowerCase() === searchFor) return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
     }
-
     const searchClean = cleanNameForComparison(searchFor);
-    // 2. Match pulito
     for (const entry of Object.values(epgMap)) {
         if (cleanNameForComparison(entry.originalName) === searchClean) return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
     }
-
-    // 3. Contenimento UNIDIREZIONALE: solo se il nome EPG contiene il nome cercato
     for (const entry of Object.values(epgMap)) {
         const epgClean = cleanNameForComparison(entry.originalName);
         if (epgClean.includes(searchClean)) return { tvgId: entry.tvgId, logo: entry.logo, epgOriginalName: entry.originalName };
     }
-
     return {};
 }
 
-// ---------- Estrazione clearkey ----------
 function extractClearkeyUaznao(url) {
     if (!url) return [];
     try {
@@ -202,8 +192,7 @@ function extractClearkeyUaznao(url) {
     } catch { return []; }
 }
 
-// ---------- Costruzione URL EasyProxy ----------
-function buildStreamUrl(streamUrl, clearkeys, disableSsl = false) {
+function buildStreamUrl(streamUrl, clearkeys, disableSsl = false, redirectStream = false) {
     const params = new URLSearchParams();
     params.set('url', streamUrl || '');
     if (EASYPROXY_PASSWORD) params.set('api_password', EASYPROXY_PASSWORD);
@@ -211,40 +200,30 @@ function buildStreamUrl(streamUrl, clearkeys, disableSsl = false) {
         clearkeys.forEach(ck => params.append('clearkey', ck));
     }
     if (disableSsl) params.set('disable_ssl', '1');
+    if (redirectStream) params.set('redirect_stream', 'true');
     return `${EASYPROXY_URL}/proxy/manifest.m3u8?${params.toString()}`;
 }
 
-// ---------- Risoluzione URL dami-tv.pro ----------
 async function resolveDamiTvUrl(channelId) {
     try {
         const resolveUrl = `https://dami-tv.pro/papi/tv/resolve/${channelId}`;
-        console.log(`[DamiTV] Risoluzione ID: ${channelId}...`);
-        
         const resp = await axios.get(resolveUrl, {
             timeout: 10000,
-            headers: {
-                'User-Agent': 'Mozilla/5.0',
-                'Referer': 'https://dami-tv.pro/'
-            }
+            headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://dami-tv.pro/' }
         });
-        
         const data = resp.data;
         let streamUrl = data.stream || data.url;
         if (streamUrl) {
-            if (streamUrl.startsWith('/')) { streamUrl = `https://dami-tv.pro${streamUrl}`; }
+            if (streamUrl.startsWith('/')) streamUrl = `https://dami-tv.pro${streamUrl}`;
             return streamUrl;
         }
         return null;
-    } catch (e) {
-        return null;
-    }
+    } catch (e) { return null; }
 }
 
-// ---------- Risoluzione URL DLHD (Sky/DAZN) ----------
 async function resolveDlhdUrl(channelId) {
     try {
         const url = `https://dami-tv.pro/papi/tv/dlhd/${channelId}/playlist.m3u8`;
-        console.log(`[DLHD] Risoluzione ID: ${channelId}...`);
         const resp = await axios.get(url, {
             maxRedirects: 0,
             validateStatus: status => status >= 200 && status < 400,
@@ -267,30 +246,70 @@ async function resolveDlhdUrl(channelId) {
     }
 }
 
-// ---------- Fetch da DamiTV ----------
+// ---------- Build Multi-Sorgente ----------
 async function buildChannels() {
-    const newChannels = [], newGenres = new Set(), allTitles = new Set();
+    const channelsMap = new Map();
+    const newGenres = new Set();
 
-    async function elaboraCanali(urlData, tipo) {
+    function addOrUpdateChannel(name, category, logoUrl, tvgId, sourceData) {
+        const normalized = cleanNameForComparison(name) || name.toLowerCase();
+        if (!channelsMap.has(normalized)) {
+            channelsMap.set(normalized, {
+                id: `iptv_multi_${crypto.createHash('md5').update(normalized).digest('hex').substring(0, 10)}`,
+                type: 'tv',
+                name: name,
+                genre: category,
+                logo: logoUrl,
+                tvgId: tvgId,
+                sources: {}
+            });
+            newGenres.add(category);
+        }
+        Object.assign(channelsMap.get(normalized).sources, sourceData);
+    }
+
+    // 1. Fetch CDNLiveTV (Sports99)
+    try {
+        console.log('[CDNLive] Download lista canali TV...');
+        const { data } = await axios.get('https://api.cdnlivetv.tv/api/v1/channels/?user=cdnlivetv&plan=free', { timeout: 30000 });
+        if (data && data.channels) {
+            for (const item of data.channels) {
+                if (item.code !== 'it') continue;
+                let name = (item.name || '').trim();
+                if (!name) continue;
+
+                if (filterKeywords.length > 0) {
+                    if (!filterKeywords.some(kw => name.toLowerCase().includes(kw))) continue;
+                }
+
+                const category = getCategory(name);
+                const epgInfo = findEpgInfo(name);
+                let logo = item.image || epgInfo.logo || '';
+                const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
+                
+                addOrUpdateChannel(name, category, logoUrl, epgInfo.tvgId || '', { cdnLiveUrl: item.url });
+            }
+            console.log('[CDNLive] Canali italiani processati.');
+        }
+    } catch (e) { console.error(`[CDNLive] Errore: ${e.message}`); }
+
+    // 2. Fetch DamiTV & DLHD
+    async function elaboraDami(urlData, tipo) {
         try {
             console.log(`[${tipo}] Download lista canali TV...`);
             const { data } = await axios.get(urlData, { timeout: 30000 });
             if (data && data.channels) {
                 for (const item of data.channels) {
                     if (item.country !== 'it' && item.country !== 'Italy') continue;
-                    
-                    let name = (item.name || '').trim();
+                    let name = (item.name || '').trim().replace(/ Italy$/i, '').trim();
                     if (!name) continue;
-                    name = name.replace(/ Italy$/i, '').trim(); // Pulisce i nomi dal suffisso ' Italy'
 
                     if (filterKeywords.length > 0) {
-                        const nameLower = name.toLowerCase();
-                        if (!filterKeywords.some(kw => nameLower.includes(kw))) continue;
+                        if (!filterKeywords.some(kw => name.toLowerCase().includes(kw))) continue;
                     }
 
                     const category = getCategory(name);
                     const epgInfo = findEpgInfo(name);
-                    const tvgId = epgInfo.tvgId || '';
                     let logo = item.image || epgInfo.logo || '';
 
                     if (name.toLowerCase().startsWith('lba')) logo = LBA_LOGO;
@@ -303,29 +322,19 @@ async function buildChannels() {
                     }
 
                     const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
-
-                    const channelObj = {
-                        id: `iptv_${item.id}_${crypto.createHash('md5').update(name).digest('hex').substring(0, 5)}`,
-                        type: 'tv', name, url: null, genre: category, logo: logoUrl, tvgId
-                    };
-
-                    if (tipo === 'DamiTV') channelObj.damiId = item.id;
-                    else channelObj.dlhdId = item.id;
-
-                    newChannels.push(channelObj);
-                    newGenres.add(category);
-                    allTitles.add(name.toLowerCase());
+                    
+                    if (tipo === 'DamiTV') addOrUpdateChannel(name, category, logoUrl, epgInfo.tvgId || '', { damiId: item.id });
+                    else addOrUpdateChannel(name, category, logoUrl, epgInfo.tvgId || '', { dlhdId: item.id });
                 }
-                console.log(`[${tipo}] Aggiunti canali italiani.`);
+                console.log(`[${tipo}] Canali italiani processati.`);
             }
-        } catch (e) {
-            console.error(`[${tipo}] Errore download canali: ${e.message}`);
-        }
+        } catch (e) { console.error(`[${tipo}] Errore: ${e.message}`); }
     }
 
-    await elaboraCanali('https://dami-tv.pro/data/tv-channels.json', 'DamiTV');
-    await elaboraCanali('https://dami-tv.pro/data/dlhd-channels.json', 'DLHD');
+    await elaboraDami('https://dami-tv.pro/data/tv-channels.json', 'DamiTV');
+    await elaboraDami('https://dami-tv.pro/data/dlhd-channels.json', 'DLHD');
 
+    // 3. Extra locali
     const extraPath = '/config/liste/extra.json';
     if (fs.existsSync(extraPath)) {
         try {
@@ -333,24 +342,21 @@ async function buildChannels() {
             if (Array.isArray(extraArray)) {
                 for (const item of extraArray) {
                     const name = (item.channelName || '').trim();
-                    if (!name || allTitles.has(name.toLowerCase())) continue;
+                    if (!name) continue;
                     const category = getCategory(name);
                     let cleanUrl = (item.url || '').replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
-                    const clearkeys = extractClearkeyUaznao(item.url);
-                    const streamUrl = buildStreamUrl(cleanUrl, clearkeys);
-                    newChannels.push({
-                        id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
-                        type: 'tv', name, damiId: null, dlhdId: null, url: streamUrl, genre: category, logo: `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`, tvgId: ''
+                    addOrUpdateChannel(name, category, `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`, '', { 
+                        localUrl: cleanUrl, 
+                        localCk: extractClearkeyUaznao(item.url) 
                     });
-                    newGenres.add(category);
                 }
             }
         } catch (e) {}
     }
 
-    channels = newChannels;
+    channels = Array.from(channelsMap.values());
     genres = newGenres;
-    console.log(`[Totale] ${channels.length} canali pronti.`);
+    console.log(`[Totale] ${channels.length} canali univoci pronti (con multi-sorgente).`);
 }
 
 function scheduleNextRefresh() {
@@ -360,19 +366,17 @@ function scheduleNextRefresh() {
 }
 
 async function updateChannels() {
-    console.log('[Update] Inizio aggiornamento...');
+    console.log('[Update] Inizio aggiornamento multi-sorgente...');
     await buildChannels();
     scheduleNextRefresh();
 }
 
-// ---------- EPG giornaliero (02:00 UTC) ----------
 function scheduleEPG() {
     if (!EPG_URL) return;
     const now = new Date();
     const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 2, 0, 0, 0));
     if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
     const delay = next.getTime() - now.getTime();
-    console.log(`[EPG] Prossimo aggiornamento alle ${next.toISOString()}`);
     setTimeout(() => { updateEPG(); scheduleEPG(); }, delay);
 }
 
@@ -388,7 +392,7 @@ async function run() {
         id: 'org.iptv.arta',
         version: process.env.ADDON_VERSION || '2.0.0',
         name: 'Arta LiveTV',
-        description: 'Streaming Live TV con DRM',
+        description: 'Streaming Live TV Multi-Sorgente',
         resources: ['catalog', 'meta', 'stream'],
         types: ['tv'],
         catalogs: [{
@@ -419,7 +423,7 @@ async function run() {
     builder.defineMetaHandler(async ({ id }) => {
         const ch = channels.find(c => c.id === id);
         if (!ch) return { meta: null };
-        let desc = `Categoria: ${ch.genre}`;
+        let desc = `Categoria: ${ch.genre}\nSorgenti disponibili: ` + Object.keys(ch.sources).join(', ');
         if (ch.tvgId && epgData[ch.tvgId]) {
             const programmes = epgData[ch.tvgId];
             if (programmes.length) {
@@ -437,17 +441,31 @@ async function run() {
         if (!ch) return { streams: [] };
         console.log(`[Stream] Richiesto: ${ch.name}`);
         
-        let streamUrl = ch.url;
-        if (ch.damiId) {
-            const resolved = await resolveDamiTvUrl(ch.damiId);
-            if (resolved) streamUrl = buildStreamUrl(resolved, []); 
-        } else if (ch.dlhdId) {
-            const resolved = await resolveDlhdUrl(ch.dlhdId);
-            if (resolved) streamUrl = buildStreamUrl(resolved, []); 
+        const streams = [];
+
+        // 1. Sorgente DamiTV
+        if (ch.sources.damiId) {
+            const resolved = await resolveDamiTvUrl(ch.sources.damiId);
+            if (resolved) streams.push({ title: '✅ Dami-TV (Generico)', url: buildStreamUrl(resolved, []), behaviorHints: { notWebReady: true, bingeGroup: "tv" } });
+        }
+
+        // 2. Sorgente DLHD
+        if (ch.sources.dlhdId) {
+            const resolved = await resolveDlhdUrl(ch.sources.dlhdId);
+            if (resolved) streams.push({ title: '⭐ DLHD (Premium)', url: buildStreamUrl(resolved, []), behaviorHints: { notWebReady: true, bingeGroup: "tv" } });
+        }
+
+        // 3. Sorgente CDNLive (Sports99)
+        if (ch.sources.cdnLiveUrl) {
+            streams.push({ title: '🔥 Sports99 (Redirect)', url: buildStreamUrl(ch.sources.cdnLiveUrl, [], false, true), behaviorHints: { notWebReady: true, bingeGroup: "tv" } });
+        }
+
+        // 4. Extra Locale
+        if (ch.sources.localUrl) {
+            streams.push({ title: '📁 Locale (Extra)', url: buildStreamUrl(ch.sources.localUrl, ch.sources.localCk || []), behaviorHints: { notWebReady: true, bingeGroup: "tv" } });
         }
         
-        if (!streamUrl) return { streams: [] };
-        return { streams: [{ title: 'Stream in Diretta', url: streamUrl, behaviorHints: { notWebReady: true, bingeGroup: "tv" } }] };
+        return { streams };
     });
 
     const app = express();
