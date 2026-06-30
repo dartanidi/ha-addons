@@ -82,6 +82,15 @@ function cleanNameForComparison(name) {
     return name.toLowerCase().replace(/\s*\+?\d+\s*/g, '').replace(/\bhd\b|\bfullhd\b|\b4k\b/gi, '').replace(/\bmaratone\b/gi, '').replace(/[^a-z0-9À-ÿ\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 
+function applyAliases(name) {
+    if (!name) return "";
+    let normalized = cleanNameForComparison(name) || name.toLowerCase();
+    for (const [alias, realName] of Object.entries(NAME_ALIASES)) {
+        if (normalized === cleanNameForComparison(alias)) return realName;
+    }
+    return name;
+}
+
 function normalizeName(name) {
     if (!name) return "";
     let n = name.toLowerCase().replace(/\s+/g, '').replace(/\[.*?\]/g, '').replace(/\(.*?\)/g, '').replace(/\.it\b/g, '').replace(/hd|fullhd/gi, '');
@@ -277,6 +286,7 @@ async function buildChannels() {
                 if (item.code !== 'it') continue;
                 let name = (item.name || '').trim();
                 if (!name) continue;
+                name = applyAliases(name);
 
                 if (filterKeywords.length > 0) {
                     if (!filterKeywords.some(kw => name.toLowerCase().includes(kw))) continue;
@@ -284,7 +294,7 @@ async function buildChannels() {
 
                 const category = getCategory(name);
                 const epgInfo = findEpgInfo(name);
-                let logo = item.image || epgInfo.logo || '';
+                let logo = epgInfo.logo || item.image || '';
                 const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
                 
                 addOrUpdateChannel(name, category, logoUrl, epgInfo.tvgId || '', { cdnLiveUrl: item.url });
@@ -303,6 +313,7 @@ async function buildChannels() {
                     if (item.country !== 'it' && item.country !== 'Italy') continue;
                     let name = (item.name || '').trim().replace(/ Italy$/i, '').trim();
                     if (!name) continue;
+                    name = applyAliases(name);
 
                     if (filterKeywords.length > 0) {
                         if (!filterKeywords.some(kw => name.toLowerCase().includes(kw))) continue;
@@ -310,15 +321,13 @@ async function buildChannels() {
 
                     const category = getCategory(name);
                     const epgInfo = findEpgInfo(name);
-                    let logo = item.image || epgInfo.logo || '';
+                    let logo = epgInfo.logo || item.image || '';
 
-                    if (name.toLowerCase().startsWith('lba')) logo = LBA_LOGO;
-                    else if (name.toLowerCase().startsWith('eurosport')) logo = EUROSPORT_LOGO;
-                    else if (name.toLowerCase().startsWith('sky ')) {
-                        logo = (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) 
-                            ? epgInfo.logo : 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
-                    } else if (name.toLowerCase().startsWith('dazn')) {
-                        logo = 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/DAZN_logo.svg/1024px-DAZN_logo.svg.png';
+                    if (!logo) {
+                        if (name.toLowerCase().startsWith('lba')) logo = LBA_LOGO;
+                        else if (name.toLowerCase().startsWith('eurosport')) logo = EUROSPORT_LOGO;
+                        else if (name.toLowerCase().startsWith('sky ')) logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
+                        else if (name.toLowerCase().startsWith('dazn')) logo = 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/DAZN_logo.svg/1024px-DAZN_logo.svg.png';
                     }
 
                     const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
