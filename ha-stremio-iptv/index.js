@@ -10,7 +10,7 @@ const fs = require('fs');
 
 // ---------- Configurazione ----------
 const PORT = process.env.PORT || 3000;
-const UAZNAO_URL = process.env.UAZNAO_URL;
+const DAMI_FILTER = process.env.DAMI_FILTER || "";
 const EPG_URL = process.env.EPG_URL;
 const REFRESH_INTERVAL_MIN = parseInt(process.env.REFRESH_INTERVAL_MIN) || 60;
 const EASYPROXY_URL = process.env.EASYPROXY_URL?.replace(/\/$/, '');
@@ -34,8 +34,7 @@ let genres = new Set();
 let epgMap = {};
 let epgData = {};
 let refreshTimer = null;
-let currentUaznaoUrl = UAZNAO_URL;
-let lastSkyExpiry = null;
+let filterKeywords = DAMI_FILTER ? DAMI_FILTER.split(',').map(k => k.trim().toLowerCase()).filter(k => k) : [];
 
 // ---------- Filtro canali italiani ----------
 const PAESI_STRANIERI = ["[inglese]", "[hr]", "[nl]", "[pl]", "[cz]", "[de]", "[fr]", "[es]", "[pt]"];
@@ -216,18 +215,15 @@ function buildStreamUrl(streamUrl, clearkeys, disableSsl = false) {
 }
 
 // ---------- Risoluzione URL dami-tv.pro ----------
-async function resolveDamiTvUrl(embedUrl) {
+async function resolveDamiTvUrl(channelId) {
     try {
-        const idMatch = embedUrl.match(/\/embed\/channel\/\?id=([^&]+)/);
-        if (!idMatch) return null;
-        const channelId = idMatch[1];
         const resolveUrl = `https://dami-tv.pro/papi/tv/resolve/${channelId}`;
-        console.log(`[DamiTV] Risoluzione: ${resolveUrl}`);
+        console.log(`[DamiTV] Risoluzione ID: ${channelId}...`);
         
         const resp = await axios.get(resolveUrl, {
             timeout: 10000,
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0',
                 'Referer': 'https://dami-tv.pro/'
             }
         });
@@ -235,255 +231,98 @@ async function resolveDamiTvUrl(embedUrl) {
         const data = resp.data;
         let streamUrl = data.stream || data.url;
         if (streamUrl) {
-            if (streamUrl.startsWith('/')) {
-                streamUrl = `https://dami-tv.pro${streamUrl}`;
-            }
-            console.log(`[DamiTV] Flusso assoluto: ${streamUrl}`);
+            if (streamUrl.startsWith('/')) { streamUrl = `https://dami-tv.pro${streamUrl}`; }
             return streamUrl;
         }
-        console.warn('[DamiTV] Nessun URL nel JSON:', data);
         return null;
     } catch (e) {
-        console.error(`[DamiTV] Errore risoluzione: ${e.message}`);
         return null;
     }
 }
 
-// ---------- Fallback URL Uaznao ----------
-async function fetchNewUaznaoUrl() {
-    console.log('[Fallback] Tentativo di recuperare nuovo URL Uaznao...');
-    try {
-        const { data } = await axios.get('https://telegra.ph/PREMIUM-TV-05-05-2', { timeout: 15000 });
-        const match = data.match(/https:\/\/uaznao\.com\/premium\/temp\.php\?token=([a-f0-9]+)/i);
-        if (match) {
-            const newToken = match[1];
-            const newUrl = `https://uaznao.com/premium/temp.php?token=${newToken}`;
-            console.log(`[Fallback] Nuovo URL trovato: ${newUrl}`);
-            return newUrl;
-        }
-        console.error('[Fallback] Nessun token trovato nella pagina Telegram.');
-    } catch (e) {
-        console.error(`[Fallback] Errore nel recupero nuovo URL: ${e.message}`);
-    }
-    return null;
-}
-
-// ---------- Fetch & merge ----------
+// ---------- Fetch da DamiTV ----------
 async function buildChannels() {
     const newChannels = [], newGenres = new Set(), allTitles = new Set();
 
-    // --- Uaznao ---
-    let uaznaoArray = null;
-    if (currentUaznaoUrl) {
-        console.log('[Uaznao] Download...');
-        try {
-            const { data } = await axios.get(currentUaznaoUrl, { timeout: 30000 });
-            uaznaoArray = Array.isArray(data) ? data : (data && typeof data === 'object' ? Object.values(data).find(v => Array.isArray(v)) : null);
-            if (!uaznaoArray) {
-                console.error('[Uaznao] Nessun array trovato. Avvio fallback...');
-                const newUrl = await fetchNewUaznaoUrl();
-                if (newUrl) {
-                    currentUaznaoUrl = newUrl;
-                    const { data: newData } = await axios.get(currentUaznaoUrl, { timeout: 30000 });
-                    uaznaoArray = Array.isArray(newData) ? newData : Object.values(newData).find(v => Array.isArray(v));
+    console.log('[DamiTV] Download lista canali TV...');
+    try {
+        const { data } = await axios.get('https://dami-tv.pro/data/tv-channels.json', { timeout: 30000 });
+        if (data && data.channels) {
+            for (const item of data.channels) {
+                if (item.country !== 'it' && item.country !== 'Italy') continue;
+                
+                const name = (item.name || '').trim();
+                if (!name) continue;
+
+                if (filterKeywords.length > 0) {
+                    const nameLower = name.toLowerCase();
+                    if (!filterKeywords.some(kw => nameLower.includes(kw))) continue;
                 }
-            }
-        } catch (e) {
-            console.error(`[Uaznao] Errore download: ${e.message}. Avvio fallback...`);
-            const newUrl = await fetchNewUaznaoUrl();
-            if (newUrl) {
-                currentUaznaoUrl = newUrl;
-                try {
-                    const { data: newData } = await axios.get(currentUaznaoUrl, { timeout: 30000 });
-                    uaznaoArray = Array.isArray(newData) ? newData : Object.values(newData).find(v => Array.isArray(v));
-                } catch (e2) {
-                    console.error(`[Uaznao] Anche il fallback è fallito: ${e2.message}`);
+
+                const category = getCategory(name);
+                const epgInfo = findEpgInfo(name);
+                const tvgId = epgInfo.tvgId || '';
+                let logo = item.image || epgInfo.logo || '';
+
+                if (name.toLowerCase().startsWith('lba')) logo = LBA_LOGO;
+                else if (name.toLowerCase().startsWith('eurosport')) logo = EUROSPORT_LOGO;
+                else if (name.toLowerCase().startsWith('sky ')) {
+                    logo = (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) 
+                        ? epgInfo.logo : 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
                 }
+
+                const logoUrl = logo ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}` : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
+
+                newChannels.push({
+                    id: `iptv_${item.id}_${crypto.createHash('md5').update(name).digest('hex').substring(0, 5)}`,
+                    type: 'tv', name, damiId: item.id, url: null, genre: category, logo: logoUrl, tvgId
+                });
+                newGenres.add(category);
+                allTitles.add(name.toLowerCase());
             }
+            console.log(`[DamiTV] Elaborati ${newChannels.length} canali italiani.`);
         }
+    } catch (e) {
+        console.error(`[DamiTV] Errore download canali: ${e.message}`);
     }
 
-    if (uaznaoArray) {
-        for (const item of uaznaoArray) {
-            const name = (item.channelName || '').trim();
-            if (!name || !isItalianChannel(name)) continue;
-
-            if (name.toLowerCase().includes('[uk]') || name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
-            const excludeCategories = ['portogallo', 'uk', 'tnt sports'];
-            if (item.category && excludeCategories.includes(item.category.toLowerCase())) continue;
-
-            const category = getCategory(name);
-            let cleanUrl = (item.url || '').replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
-
-            // --- Risoluzione DamiTV ---
-            if (cleanUrl.includes('dami-tv.pro')) {
-                const resolved = await resolveDamiTvUrl(cleanUrl);
-                if (resolved) {
-                    cleanUrl = resolved;
-                } else {
-                    console.warn(`[Uaznao] Impossibile risolvere DamiTV per ${name}, salto il canale.`);
-                    continue;
-                }
-            }
-
-            const clearkeys = extractClearkeyUaznao(item.url);
-            const streamUrl = buildStreamUrl(cleanUrl, clearkeys);
-
-            const epgInfo = findEpgInfo(name);
-            const tvgId = epgInfo.tvgId || '';
-            let logo = '';
-
-            if (name.toLowerCase().startsWith('lba')) {
-                logo = LBA_LOGO;
-            } else if (name.toLowerCase().startsWith('eurosport')) {
-                logo = EUROSPORT_LOGO;
-            } else if (name.toLowerCase().startsWith('sky ')) {
-                if (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) {
-                    logo = epgInfo.logo;
-                } else {
-                    logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
-                }
-            } else {
-                logo = epgInfo.logo || '';
-            }
-
-            const logoUrl = logo
-                ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}`
-                : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
-
-            newChannels.push({
-                id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
-                type: 'tv', name, url: streamUrl, genre: category, logo: logoUrl, tvgId
-            });
-            newGenres.add(category);
-            allTitles.add(name.toLowerCase());
-        }
-        console.log(`[Uaznao] ${newChannels.length} canali italiani.`);
-    }
-
-    // --- Extra (canali locali) ---
     const extraPath = '/config/liste/extra.json';
     if (fs.existsSync(extraPath)) {
-        console.log('[Extra] Caricamento canali locali...');
         try {
-            const extraRaw = fs.readFileSync(extraPath, 'utf-8');
-            const extraArray = JSON.parse(extraRaw);
+            const extraArray = JSON.parse(fs.readFileSync(extraPath, 'utf-8'));
             if (Array.isArray(extraArray)) {
                 for (const item of extraArray) {
                     const name = (item.channelName || '').trim();
-                    if (!name || !isItalianChannel(name) || allTitles.has(name.toLowerCase())) continue;
-
-                    if (name.toLowerCase().includes('[uk]') || name.toLowerCase().includes('spotv2') || name.toLowerCase().includes('tsn1') || name.toLowerCase().includes('tsn2') || name.toLowerCase().includes('tsn3') || name.toLowerCase().includes('tsn4') || name.toLowerCase().includes('tsn5')) continue;
-                    const excludeCategories = ['portogallo', 'uk', 'tnt sports'];
-                    if (item.category && excludeCategories.includes(item.category.toLowerCase())) continue;
-
+                    if (!name || allTitles.has(name.toLowerCase())) continue;
                     const category = getCategory(name);
                     let cleanUrl = (item.url || '').replace(/ck=[^&\s]+&?/, '').replace(/[?&]$/, '');
-
-                    if (cleanUrl.includes('dami-tv.pro')) {
-                        const resolved = await resolveDamiTvUrl(cleanUrl);
-                        if (resolved) {
-                            cleanUrl = resolved;
-                        } else {
-                            console.warn(`[Extra] Impossibile risolvere DamiTV per ${name}, salto il canale.`);
-                            continue;
-                        }
-                    }
-
                     const clearkeys = extractClearkeyUaznao(item.url);
                     const streamUrl = buildStreamUrl(cleanUrl, clearkeys);
-
-                    const epgInfo = findEpgInfo(name);
-                    const tvgId = epgInfo.tvgId || '';
-                    let logo = '';
-
-                    if (name.toLowerCase().startsWith('lba')) {
-                        logo = LBA_LOGO;
-                    } else if (name.toLowerCase().startsWith('eurosport')) {
-                        logo = EUROSPORT_LOGO;
-                    } else if (name.toLowerCase().startsWith('sky ')) {
-                        if (epgInfo.logo && epgInfo.epgOriginalName && epgInfo.epgOriginalName.toLowerCase().startsWith('sky')) {
-                            logo = epgInfo.logo;
-                        } else {
-                            logo = 'https://upload.wikimedia.org/wikipedia/commons/d/db/Sky_logo_2025.svg';
-                        }
-                    } else {
-                        logo = epgInfo.logo || '';
-                    }
-
-                    const logoUrl = logo
-                        ? `${LOGO_BASE_URL}?url=${encodeURIComponent(logo)}&name=${encodeURIComponent(name)}`
-                        : `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`;
-
                     newChannels.push({
                         id: `iptv_${crypto.createHash('md5').update(streamUrl).digest('hex').substring(0, 10)}`,
-                        type: 'tv', name, url: streamUrl, genre: category, logo: logoUrl, tvgId
+                        type: 'tv', name, damiId: null, url: streamUrl, genre: category, logo: `${LOGO_BASE_URL}?name=${encodeURIComponent(name)}`, tvgId: ''
                     });
                     newGenres.add(category);
-                    allTitles.add(name.toLowerCase());
                 }
-                console.log(`[Extra] ${newChannels.length} canali dopo merge.`);
             }
-        } catch (e) {
-            console.error(`[Extra] Errore parsing: ${e.message}`);
-        }
+        } catch (e) {}
     }
 
     channels = newChannels;
     genres = newGenres;
-    console.log(`[Totale] ${channels.length} canali.`);
+    console.log(`[Totale] ${channels.length} canali pronti.`);
 }
 
-// ---------- Scheduling basato su Sky Sport 24 ----------
-function getSkySport24Expiry(uaznaoData) {
-    if (!uaznaoData || !Array.isArray(uaznaoData)) return null;
-    const skySport24 = uaznaoData.find(item => item.channelName && item.channelName.toLowerCase().trim() === 'sky sport 24');
-    if (skySport24 && skySport24.expiresAt) {
-        const d = new Date(skySport24.expiresAt);
-        if (!isNaN(d.getTime())) return d;
-    }
-    return null;
-}
-
-function scheduleNextRefresh(uaznaoData) {
+function scheduleNextRefresh() {
     if (refreshTimer) clearTimeout(refreshTimer);
-
-    const skyExpiry = getSkySport24Expiry(uaznaoData);
-    let delayMs;
-
-    if (skyExpiry) {
-        const now = Date.now();
-        if (lastSkyExpiry && skyExpiry.getTime() === lastSkyExpiry.getTime()) {
-            delayMs = 30 * 60 * 1000;
-            console.log(`[Scheduler] Scadenza Sky Sport 24 invariata (${skyExpiry.toISOString()}), riprovo tra 30 min.`);
-        } else {
-            const targetMs = skyExpiry.getTime() + 60 * 60 * 1000;
-            delayMs = targetMs - now;
-            if (delayMs < 300000) delayMs = 300000;
-            console.log(`[Scheduler] Nuova scadenza Sky Sport 24: ${skyExpiry.toISOString()}, refresh tra ${Math.round(delayMs / 60000)} min.`);
-        }
-        lastSkyExpiry = skyExpiry;
-    } else {
-        delayMs = REFRESH_INTERVAL_MIN * 60 * 1000;
-        console.log(`[Scheduler] Nessuna scadenza, refresh ogni ${REFRESH_INTERVAL_MIN} min.`);
-        lastSkyExpiry = null;
-    }
-
+    const delayMs = REFRESH_INTERVAL_MIN * 60 * 1000;
     refreshTimer = setTimeout(() => updateChannels(), delayMs);
 }
 
 async function updateChannels() {
     console.log('[Update] Inizio aggiornamento...');
     await buildChannels();
-
-    let uaznaoData = null;
-    if (currentUaznaoUrl) {
-        try {
-            const { data } = await axios.get(currentUaznaoUrl, { timeout: 30000 });
-            uaznaoData = Array.isArray(data) ? data : (data && typeof data === 'object' ? Object.values(data).find(v => Array.isArray(v)) : null);
-        } catch {}
-    }
-    scheduleNextRefresh(uaznaoData);
+    scheduleNextRefresh();
 }
 
 // ---------- EPG giornaliero (02:00 UTC) ----------
@@ -556,8 +395,18 @@ async function run() {
     builder.defineStreamHandler(async ({ id }) => {
         const ch = channels.find(c => c.id === id);
         if (!ch) return { streams: [] };
-        console.log(`[Stream] ${ch.name}`);
-        return { streams: [{ title: 'Stream in Diretta', url: ch.url, behaviorHints: { notWebReady: true, bingeGroup: "tv" } }] };
+        console.log(`[Stream] Richiesto: ${ch.name}`);
+        
+        let streamUrl = ch.url;
+        if (ch.damiId) {
+            const resolved = await resolveDamiTvUrl(ch.damiId);
+            if (resolved) {
+                streamUrl = buildStreamUrl(resolved, []); 
+            }
+        }
+        
+        if (!streamUrl) return { streams: [] };
+        return { streams: [{ title: 'Stream in Diretta', url: streamUrl, behaviorHints: { notWebReady: true, bingeGroup: "tv" } }] };
     });
 
     const app = express();
